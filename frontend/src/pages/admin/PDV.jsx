@@ -123,7 +123,7 @@ export default function PDV() {
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(pollPendingOrders, 15000);
+    const interval = setInterval(pollPendingOrders, 5000);
     return () => clearInterval(interval);
   }, [pollPendingOrders]);
 
@@ -283,42 +283,31 @@ export default function PDV() {
   };
 
   return (
-    <div className="flex flex-col h-full gap-4">
-      {/* Summary Bar */}
-      {summary && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <div className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
-            <ShoppingBag className="w-8 h-8 text-blue-500 bg-blue-100 dark:bg-blue-900/40 rounded-lg p-1.5 flex-shrink-0" />
-            <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Vendas hoje</p>
-              <p className="font-bold text-gray-900 dark:text-white">
-                {summary.orders_today ?? 0}
-              </p>
-            </div>
+    <div className="flex flex-col gap-3" style={{height:"calc(100vh - 108px)"}}>
+      {/* Compact Summary + Title */}
+      <div className="flex items-center justify-between">
+        <h1 className="font-display font-bold text-xl dark:text-white flex items-center gap-2">
+          <ShoppingCart className="w-5 h-5 text-orange-500"/> PDV
+        </h1>
+        {summary && (
+          <div className="flex items-center gap-4">
+            {[
+              {icon:ShoppingBag, label:"Vendas", value: summary.orders_today ?? 0, color:"#3b82f6"},
+              {icon:DollarSign,  label:"Receita", value: brl(summary.revenue_today ?? 0), color:"#22c55e"},
+              {icon:TrendingUp,  label:"Ticket médio", value: brl(summary.avg_ticket ?? 0), color:"#f59e0b"},
+            ].map((s) => (
+              <div key={s.label} className="flex items-center gap-1.5 bg-white dark:bg-[#111111] border border-gray-100 dark:border-gray-800 rounded-xl px-3 py-1.5">
+                <s.icon className="w-3.5 h-3.5" style={{color:s.color}}/>
+                <span className="text-xs text-gray-400">{s.label}:</span>
+                <span className="text-xs font-bold dark:text-white">{s.value}</span>
+              </div>
+            ))}
           </div>
-          <div className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
-            <DollarSign className="w-8 h-8 text-green-500 bg-green-100 dark:bg-green-900/40 rounded-lg p-1.5 flex-shrink-0" />
-            <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Receita hoje</p>
-              <p className="font-bold text-gray-900 dark:text-white">
-                {brl(summary.revenue_today ?? 0)}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 sm:col-auto col-span-2">
-            <TrendingUp className="w-8 h-8 text-orange-500 bg-orange-100 dark:bg-orange-900/40 rounded-lg p-1.5 flex-shrink-0" />
-            <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Ticket médio</p>
-              <p className="font-bold text-gray-900 dark:text-white">
-                {brl(summary.avg_ticket ?? 0)}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Main PDV Layout */}
-      <div className="flex gap-4 flex-1 min-h-0" style={{ height: "calc(100vh - 260px)" }}>
+      <div className="flex gap-3 flex-1 min-h-0">
         {/* Left: Catalog */}
         <div className="flex flex-col flex-1 min-w-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden">
           <div className="p-3 border-b border-gray-100 dark:border-gray-800 space-y-2">
@@ -381,7 +370,7 @@ export default function PDV() {
                       <img
                         src={product.image_url}
                         alt={product.name}
-                        className="w-full h-20 object-cover rounded mb-2"
+                        className="w-full h-16 object-cover rounded mb-1.5"
                       />
                     )}
                     <p className="text-sm font-medium text-gray-900 dark:text-white line-clamp-2 mb-1">
@@ -408,7 +397,7 @@ export default function PDV() {
         </div>
 
         {/* Right: Cart */}
-        <div className="flex flex-col w-80 lg:w-96 flex-shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden">
+        <div className="flex flex-col w-72 flex-shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden">
           <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
             <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
               <ShoppingCart className="w-5 h-5 text-orange-500" />

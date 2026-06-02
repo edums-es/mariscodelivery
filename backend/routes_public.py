@@ -84,14 +84,17 @@ async def validate_coupon(slug: str, payload: dict):
 
 async def _notify_new_order(restaurant: dict, order: dict, order_in, pix_via_openpix: bool = False):
     """Send WhatsApp to restaurant owner when new order arrives."""
-    from datetime import datetime, timezone, timedelta
-    owner_phone = restaurant.get("whatsapp") or restaurant.get("phone")
-    if not owner_phone:
-        return
+    import logging as _log
+    _logger = _log.getLogger(__name__)
+    try:
+        from datetime import datetime, timezone, timedelta
+        owner_phone = restaurant.get("whatsapp") or restaurant.get("phone")
+        if not owner_phone:
+            _logger.warning("_notify_new_order: sem telefone no restaurante")
+            return
 
-    # Date/time in Brazil timezone (UTC-3, sem dependência externa)
-    from datetime import datetime, timezone, timedelta
-    br_tz = timezone(timedelta(hours=-3))
+        # Date/time in Brazil timezone (UTC-3)
+        br_tz = timezone(timedelta(hours=-3))
     dt_str = datetime.now(br_tz).strftime("%d/%m/%Y %H:%M")
 
     # Items
@@ -152,7 +155,10 @@ async def _notify_new_order(restaurant: dict, order: dict, order_in, pix_via_ope
         f"*Pagamento:* {payment_label}\n"
         f"{sep}"
     )
-    await send_whatsapp(restaurant, owner_phone, msg)
+        result = await send_whatsapp(restaurant, owner_phone, msg)
+        _logger.info(f"_notify_new_order: whatsapp enviado={result} para {owner_phone}")
+    except Exception as exc:
+        _logger.error(f"_notify_new_order falhou: {exc}", exc_info=True)
 
 
 def brl_fmt(value):

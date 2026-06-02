@@ -311,21 +311,37 @@ export default function Orders() {
   const [collapsed, setCollapsed] = useState({});
   const prevPendingCount = useRef(0);
   const prevCancelCount = useRef(-1);
-  const audioRef = useRef(null);
-  const audioCancelRef = useRef(null);
-  const [soundEnabled, setSoundEnabled] = useState(false);
 
-  // Unlock audio context on first user interaction
-  const enableSound = () => {
-    setSoundEnabled(true);
-    // Play silent buffer to unlock audio
-    [audioRef, audioCancelRef].forEach(ref => {
-      if (ref.current) {
-        ref.current.volume = 0;
-        ref.current.play().then(() => { ref.current.pause(); ref.current.currentTime = 0; ref.current.volume = 1; }).catch(() => {});
+  // Web Audio API beep — funciona sem interação do usuário após primeiro clique em qualquer lugar
+  const playBeep = useCallback((type = "new") => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const gain = ctx.createGain();
+      gain.connect(ctx.destination);
+      if (type === "new") {
+        // Dois bips agudos para novo pedido
+        [0, 0.18].forEach(offset => {
+          const osc = ctx.createOscillator();
+          osc.connect(gain);
+          osc.frequency.value = 880;
+          gain.gain.setValueAtTime(0.4, ctx.currentTime + offset);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.15);
+          osc.start(ctx.currentTime + offset);
+          osc.stop(ctx.currentTime + offset + 0.15);
+        });
+      } else {
+        // Tom grave descendente para cancelamento
+        const osc = ctx.createOscillator();
+        osc.connect(gain);
+        osc.frequency.setValueAtTime(440, ctx.currentTime);
+        osc.frequency.linearRampToValueAtTime(220, ctx.currentTime + 0.4);
+        gain.gain.setValueAtTime(0.4, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.4);
       }
-    });
-  };
+    } catch {}
+  }, []);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -337,7 +353,7 @@ export default function Orders() {
       const pendingNow = data.filter((o) => o.status === "pending").length;
       if (pendingNow > prevPendingCount.current && prevPendingCount.current >= 0) {
         toast.info(`🔔 ${pendingNow - prevPendingCount.current} novo(s) pedido(s)!`, { duration: 6000 });
-        if (soundEnabled) try { audioRef.current.currentTime = 0; audioRef.current?.play().catch(() => {}); } catch {}
+        playBeep('new');
       }
       prevPendingCount.current = pendingNow;
 
@@ -345,7 +361,7 @@ export default function Orders() {
       const cancelNow = data.filter((o) => o.status === "cancelled").length;
       if (prevCancelCount.current >= 0 && cancelNow > prevCancelCount.current) {
         toast.warning(`❌ ${cancelNow - prevCancelCount.current} pedido(s) cancelado(s)`, { duration: 6000 });
-        if (soundEnabled) try { audioCancelRef.current.currentTime = 0; audioCancelRef.current?.play().catch(() => {}); } catch {}
+        playBeep('cancel');
       }
       if (prevCancelCount.current < 0) prevCancelCount.current = cancelNow;
       else prevCancelCount.current = cancelNow;
@@ -356,8 +372,12 @@ export default function Orders() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const t = setInterval(() => load(true), 15000);
-    return () => clearInterval(t);
+    // Polling a cada 5 segundos
+    const t = setInterval(() => load(true), 5000);
+    // Atualiza imediatamente ao focar na aba
+    const onVisible = () => { if (document.visibilityState === "visible") load(true); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", onVisible); };
   }, [load]);
 
   const updateStatus = async (id, status) => {
@@ -391,33 +411,11 @@ export default function Orders() {
 
   return (
     <div className="space-y-4" data-testid="admin-orders">
-      {/* Hidden audio for notification */}
-      <audio ref={audioRef} src="/sounds/new-order.wav" preload="auto" />
-      <audio ref={audioCancelRef} src="/sounds/cancel-order.wav" preload="auto" />
-
-      {/* Sound unlock banner */}
-      {!soundEnabled && (
-        <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-4 py-2.5">
-          <p className="text-sm text-amber-700 dark:text-amber-400 font-medium">
-            🔔 Ative o alerta sonoro para novos pedidos
-          </p>
-          <button onClick={enableSound}
-            className="text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg transition-colors">
-            Ativar Som
-          </button>
-        </div>
-      )}
-      {soundEnabled && (
-        <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl px-4 py-2.5">
-          <p className="text-sm text-green-700 dark:text-green-400 font-medium">
-            🔊 Alerta sonoro ativado — atualizando a cada 15s
-          </p>
-          <button onClick={() => setSoundEnabled(false)}
-            className="text-xs text-green-600 dark:text-green-400 hover:underline">
-            Desativar
-          </button>
-        </div>
-      )}
+      {/* Status bar */}
+      <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"/>
+        Atualizando a cada 5s · alertas sonoros automáticos
+      </div>
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3">

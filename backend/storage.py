@@ -3,6 +3,8 @@ import os
 import uuid
 import logging
 
+import asyncio
+from functools import partial
 import cloudinary
 import cloudinary.uploader
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Response
@@ -39,15 +41,18 @@ def init_storage():
 
 # ── Upload helpers ─────────────────────────────────────────────────────────
 
-def _upload_cloudinary(data: bytes, ext: str, folder: str) -> str:
-    """Envia para Cloudinary e retorna a URL pública segura."""
-    result = cloudinary.uploader.upload(
+async def _upload_cloudinary(data: bytes, ext: str, folder: str) -> str:
+    """Envia para Cloudinary de forma não-bloqueante e retorna a URL pública."""
+    loop = asyncio.get_event_loop()
+    fn = partial(
+        cloudinary.uploader.upload,
         data,
         folder=folder,
         resource_type="image",
         format=ext,
         overwrite=False,
     )
+    result = await loop.run_in_executor(None, fn)
     return result["secure_url"]
 
 
@@ -80,7 +85,7 @@ async def upload(file: UploadFile = File(...), user: dict = Depends(get_current_
     try:
         if USE_CLOUDINARY:
             folder = f"menudigital/{owner}"
-            public_url = _upload_cloudinary(data, ext, folder)
+            public_url = await _upload_cloudinary(data, ext, folder)
             await db.files.insert_one({
                 "id": str(uuid.uuid4()),
                 "storage_type": "cloudinary",

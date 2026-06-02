@@ -14,7 +14,7 @@ export default function ImageUpload({ value, onChange, label, className = "", as
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const { data } = await api.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      const { data } = await api.post("/upload", fd);
       onChange(fileUrl(data.url));
       toast.success("Imagem enviada");
     } catch {

@@ -93,70 +93,63 @@ async def _notify_new_order(restaurant: dict, order: dict, order_in, pix_via_ope
             _logger.warning("_notify_new_order: sem telefone no restaurante")
             return
 
-        # Date/time in Brazil timezone (UTC-3)
         br_tz = timezone(timedelta(hours=-3))
-    dt_str = datetime.now(br_tz).strftime("%d/%m/%Y %H:%M")
+        dt_str = datetime.now(br_tz).strftime("%d/%m/%Y %H:%M")
 
-    # Items
-    items_lines = []
-    for it in order_in.items:
-        items_lines.append(f"  {it.quantity}x {it.product_name} — {brl_fmt(it.total_price)}")
-        for op in (it.options or []):
-            items_lines.append(f"    + {op.name}")
-    items_text = "\n".join(items_lines)
+        items_lines = []
+        for it in order_in.items:
+            items_lines.append(f"  {it.quantity}x {it.product_name} — {brl_fmt(it.total_price)}")
+            for op in (it.options or []):
+                items_lines.append(f"    + {op.name}")
+        items_text = "\n".join(items_lines)
 
-    # Delivery type & address
-    delivery_type = "Entrega" if order_in.type == "delivery" else "Retirada"
-    address_lines = []
-    if order_in.address and order_in.type == "delivery":
-        a = order_in.address
-        line = f"  {a.street}, {a.number}"
-        if a.complement:
-            line += f" ({a.complement})"
-        address_lines.append(line)
-        if a.neighborhood:
-            address_lines.append(f"  {a.neighborhood} — {getattr(a, 'city', '')} {getattr(a, 'state', '')}")
-    address_text = ("\n*Endereco:*\n" + "\n".join(address_lines)) if address_lines else ""
+        delivery_type = "Entrega" if order_in.type == "delivery" else "Retirada"
+        address_lines = []
+        if order_in.address and order_in.type == "delivery":
+            a = order_in.address
+            line = f"  {a.street}, {a.number}"
+            if a.complement:
+                line += f" ({a.complement})"
+            address_lines.append(line)
+            if a.neighborhood:
+                address_lines.append(f"  {a.neighborhood} — {getattr(a, 'city', '')} {getattr(a, 'state', '')}")
+        address_text = ("\n*Endereco:*\n" + "\n".join(address_lines)) if address_lines else ""
 
-    # Payment label
-    pm = (order_in.payment_method or "").strip()
-    pm_lower = pm.lower()
-    if pm_lower in ("pix", "pix automatico", "pix automático"):
-        if pix_via_openpix:
-            payment_label = "Pix (pago via OpenPix)"
+        pm = (order_in.payment_method or "").strip()
+        pm_lower = pm.lower()
+        if pm_lower in ("pix", "pix automatico", "pix automático"):
+            payment_label = "Pix (pago via OpenPix)" if pix_via_openpix else "Pix (aguardando comprovante)"
+        elif pm_lower == "dinheiro":
+            payment_label = "Dinheiro"
+        elif "credito" in pm_lower or "crédito" in pm_lower:
+            payment_label = "Cartao de credito"
+        elif "debito" in pm_lower or "débito" in pm_lower:
+            payment_label = "Cartao de debito"
+        elif "vale" in pm_lower:
+            payment_label = "Vale refeicao"
         else:
-            payment_label = "Pix (aguardando comprovante)"
-    elif pm_lower == "dinheiro":
-        payment_label = "Dinheiro"
-    elif pm_lower in ("cartao", "cartão", "cartao de credito", "cartão de crédito"):
-        payment_label = "Cartao de credito"
-    elif pm_lower in ("cartao de debito", "cartão de débito"):
-        payment_label = "Cartao de debito"
-    elif pm_lower == "vale refeicao" or pm_lower == "vale refeição":
-        payment_label = "Vale refeicao"
-    else:
-        payment_label = pm
+            payment_label = pm
 
-    sep = "--------------------"
-    msg = (
-        f"*NOVO PEDIDO #{order['order_number']}*\n"
-        f"Data: {dt_str}\n"
-        f"{sep}\n"
-        f"*Cliente:* {order_in.customer.name}\n"
-        f"*Telefone:* {order_in.customer.phone}\n"
-        f"*Tipo:* {delivery_type}"
-        f"{address_text}\n"
-        f"{sep}\n"
-        f"*Itens:*\n{items_text}\n"
-        f"{sep}\n"
-        f"Subtotal: {brl_fmt(order_in.subtotal)}\n"
-        f"Entrega: {brl_fmt(order_in.delivery_fee)}\n"
-        f"*TOTAL: {brl_fmt(order_in.total)}*\n"
-        f"*Pagamento:* {payment_label}\n"
-        f"{sep}"
-    )
+        sep = "--------------------"
+        msg = (
+            f"*NOVO PEDIDO #{order['order_number']}*\n"
+            f"Data: {dt_str}\n"
+            f"{sep}\n"
+            f"*Cliente:* {order_in.customer.name}\n"
+            f"*Telefone:* {order_in.customer.phone}\n"
+            f"*Tipo:* {delivery_type}"
+            f"{address_text}\n"
+            f"{sep}\n"
+            f"*Itens:*\n{items_text}\n"
+            f"{sep}\n"
+            f"Subtotal: {brl_fmt(order_in.subtotal)}\n"
+            f"Entrega: {brl_fmt(order_in.delivery_fee)}\n"
+            f"*TOTAL: {brl_fmt(order_in.total)}*\n"
+            f"*Pagamento:* {payment_label}\n"
+            f"{sep}"
+        )
         result = await send_whatsapp(restaurant, owner_phone, msg)
-        _logger.info(f"_notify_new_order: whatsapp enviado={result} para {owner_phone}")
+        _logger.info(f"_notify_new_order: enviado={result} para {owner_phone}")
     except Exception as exc:
         _logger.error(f"_notify_new_order falhou: {exc}", exc_info=True)
 

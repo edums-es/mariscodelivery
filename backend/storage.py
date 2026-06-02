@@ -1,21 +1,24 @@
-"""Emergent object storage utilities + upload/serve routes."""
+"""Local file storage utilities + upload/serve routes."""
 import os
 import uuid
 import logging
+import shutil
 
-import requests
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Response
+from fastapi.staticfiles import StaticFiles
 
 from db import db
 from auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
-STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
-APP_NAME = os.environ.get("APP_NAME", "menudigital")
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/tmp/uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-storage_key = None
+def init_storage():
+    """No-op: local storage needs no initialization."""
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    return UPLOAD_DIR
 
 MIME_TYPES = {
     "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
@@ -23,51 +26,23 @@ MIME_TYPES = {
 }
 
 
-def init_storage():
-    global storage_key
-    if storage_key:
-        return storage_key
-    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-    resp.raise_for_status()
-    storage_key = resp.json()["storage_key"]
-    return storage_key
-
-
 def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    resp = requests.put(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key, "Content-Type": content_type},
-        data=data, timeout=120,
-    )
-    if resp.status_code == 403:
-        # refresh key once
-        globals()["storage_key"] = None
-        key = init_storage()
-        resp = requests.put(
-            f"{STORAGE_URL}/objects/{path}",
-            headers={"X-Storage-Key": key, "Content-Type": content_type},
-            data=data, timeout=120,
-        )
-    resp.raise_for_status()
-    return resp.json()
+    full_path = os.path.join(UPLOAD_DIR, path.replace("/", os.sep))
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    with open(full_path, "wb") as f:
+        f.write(data)
+    return {"path": path, "size": len(data)}
 
 
 def get_object(path: str):
-    key = init_storage()
-    resp = requests.get(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key}, timeout=60,
-    )
-    if resp.status_code == 403:
-        globals()["storage_key"] = None
-        key = init_storage()
-        resp = requests.get(
-            f"{STORAGE_URL}/objects/{path}",
-            headers={"X-Storage-Key": key}, timeout=60,
-        )
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+    full_path = os.path.join(UPLOAD_DIR, path.replace("/", os.sep))
+    if not os.path.exists(full_path):
+        raise FileNotFoundError(f"File not found: {path}")
+    with open(full_path, "rb") as f:
+        data = f.read()
+    ext = path.rsplit(".", 1)[-1].lower() if "." in path else "bin"
+    content_type = MIME_TYPES.get(ext, "application/octet-stream")
+    return data, content_type
 
 
 router = APIRouter(prefix="/api", tags=["files"])
@@ -80,7 +55,7 @@ async def upload(file: UploadFile = File(...), user: dict = Depends(get_current_
         raise HTTPException(status_code=400, detail="Formato de imagem não suportado")
     content_type = MIME_TYPES.get(ext, file.content_type or "application/octet-stream")
     owner = user.get("restaurant_id") or str(user["_id"])
-    path = f"{APP_NAME}/uploads/{owner}/{uuid.uuid4()}.{ext}"
+    path = f"menudigital/uploads/{owner}/{uuid.uuid4()}.{ext}"
     data = await file.read()
     if len(data) > 8 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Imagem muito grande (máx 8MB)")
@@ -101,7 +76,10 @@ async def download(path: str):
     record = await db.files.find_one({"storage_path": path, "is_deleted": False})
     if not record:
         raise HTTPException(status_code=404, detail="Arquivo não encontrado")
-    data, content_type = get_object(path)
+    try:
+        data, content_type = get_object(path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado no servidor")
     return Response(
         content=data,
         media_type=record.get("content_type", content_type),

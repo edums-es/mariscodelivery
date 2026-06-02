@@ -4,75 +4,94 @@
 @tailwind utilities;
 
 body {
-    margin: 0;
-    font-family: "Manrope", -apple-system, BlinkMacSystemFont, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    background: #FAFAFA;
+  margin: 0;
+  font-family: "Manrope", -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 @layer base {
-    :root {
-        --background: 0 0% 100%;
-        --foreground: 222 47% 11%;
-        --card: 0 0% 100%;
-        --card-foreground: 222 47% 11%;
-        --popover: 0 0% 100%;
-        --popover-foreground: 222 47% 11%;
-        --primary: 222 47% 11%;
-        --primary-foreground: 0 0% 98%;
-        --secondary: 210 40% 96.1%;
-        --secondary-foreground: 222 47% 11%;
-        --muted: 210 40% 96.1%;
-        --muted-foreground: 215 16% 47%;
-        --accent: 210 40% 96.1%;
-        --accent-foreground: 222 47% 11%;
-        --destructive: 0 84.2% 60.2%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 214 32% 91%;
-        --input: 214 32% 91%;
-        --ring: 222 47% 11%;
-        --radius: 0.75rem;
+  :root {
+    --background: 0 0% 97%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 222 47% 11%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 210 40% 94%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 94%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 94%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 214 32% 89%;
+    --input: 214 32% 89%;
+    --ring: 222 47% 11%;
+    --radius: 0.75rem;
+    --brand-primary: #D4AF37;
+    --brand-primary-foreground: #0B0B0F;
+    --brand-secondary: #FDF4D4;
+  }
 
-        /* White-label brand variables (overridden per restaurant) */
-        --brand-primary: #EF4444;
-        --brand-primary-foreground: #FFFFFF;
-        --brand-secondary: #FEE2E2;
-    }
+  .dark {
+    --background: 0 0% 7%;
+    --foreground: 0 0% 93%;
+    --card: 0 0% 11%;
+    --card-foreground: 0 0% 93%;
+    --popover: 0 0% 9%;
+    --popover-foreground: 0 0% 93%;
+    --primary: 0 0% 93%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 93%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 0 0% 17%;
+    --accent-foreground: 0 0% 93%;
+    --destructive: 0 63% 45%;
+    --destructive-foreground: 210 40% 92%;
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 0 0% 75%;
+    color-scheme: dark;
+    --brand-primary: #D4AF37;
+    --brand-primary-foreground: #0B0B0F;
+    --brand-secondary: rgba(212, 175, 55, 0.15);
+  }
+
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; }
 }
 
-@layer base {
-    * {
-        @apply border-border;
-    }
-    body {
-        @apply text-foreground;
-    }
+/* ── BRAND UTILITIES ───────────────────────────────────────────────────── */
+@layer components {
+  .brand-bg  { background-color: var(--brand-primary); color: var(--brand-primary-foreground); }
+  .brand-text { color: var(--brand-primary); }
+  .brand-border { border-color: var(--brand-primary); }
+  .brand-soft { background-color: var(--brand-secondary); }
 }
 
-/* utilities */
-.scrollbar-hide::-webkit-scrollbar { display: none; }
-.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+/* ── DARK MODE GLOBAL OVERRIDES ──────────────────────────────────────────
+   Public pages use ForceLightMode (removes .dark from <html>), so these
+   overrides ONLY affect admin/super pages. Safe to use !important here.
+   ──────────────────────────────────────────────────────────────────────── */
 
-.font-display { font-family: "Outfit", sans-serif; }
-.font-body { font-family: "Manrope", sans-serif; }
-.font-admin { font-family: "Inter", sans-serif; }
+/* Backgrounds */
+.dark .bg-white  { background-color: hsl(var(--card))       !important; }
+.dark .bg-gray-50 { background-color: hsl(var(--background)) !important; }
+.dark .bg-gray-100 { background-color: hsl(var(--muted))     !important; }
 
-.brand-bg { background-color: var(--brand-primary); color: var(--brand-primary-foreground); }
-.brand-text { color: var(--brand-primary); }
-.brand-soft { background-color: var(--brand-secondary); }
-.brand-border { border-color: var(--brand-primary); }
+/* Borders */
+.dark .border-gray-100 { border-color: hsl(var(--border)) !important; }
+.dark .border-gray-200 { border-color: hsl(var(--border)) !important; }
+.dark .border-gray-300 { border-color: hsl(var(--border)) !important; }
 
-@keyframes slide-up {
-    from { transform: translateY(20px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-}
-.animate-slide-up { animation: slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }
-
-@keyframes fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-.animate-fade-in { animation: fade-in 0.4s ease both; }
-
-.no-tap-highlight { -webkit-tap-highlight-color: transparent; }
+/* Text */
+.dark .text-gray-900 { color: hsl(var(--foreground))        !important; }
+.dark .text-gray-700 { color: hsl(var(--foreground))        !important; }
+.dark .text-gray-600 { color: hsl(var(--muted-foreground))  !important; }
+.dark .text-gray-400 { color: hsl(var(--muted-foreground))  !important; }

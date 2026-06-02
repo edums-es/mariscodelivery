@@ -55,12 +55,17 @@ class ProductIn(BaseModel):
     description: Optional[str] = ""
     image_url: Optional[str] = None
     price: float = 0.0
+    wholesale_price: Optional[float] = None
     promotional_price: Optional[float] = None
     is_available: bool = True
     is_featured: bool = False
     is_best_seller: bool = False
     sort_order: int = 0
     option_groups: List[OptionGroup] = []
+    # Stock
+    track_stock: bool = False
+    stock_quantity: int = 0
+    low_stock_threshold: int = 5
 
 
 # ---------- Coupon ----------
@@ -82,6 +87,7 @@ class BannerIn(BaseModel):
     title: Optional[str] = ""
     subtitle: Optional[str] = ""
     link: Optional[str] = None
+    product_id: Optional[str] = None   # smart banner: opens product on click
     is_active: bool = True
     sort_order: int = 0
 
@@ -126,7 +132,12 @@ class RestaurantSettings(BaseModel):
     payment_methods: Optional[List[str]] = None
     pix_key: Optional[str] = None
     pix_name: Optional[str] = None
+    openpix_app_id: Optional[str] = None
     opening_hours: Optional[dict] = None
+    twilio_account_sid: Optional[str] = None
+    twilio_auth_token: Optional[str] = None
+    twilio_whatsapp_number: Optional[str] = None
+    neighborhood: Optional[str] = None
 
 
 # ---------- Orders ----------
@@ -173,6 +184,8 @@ class OrderIn(BaseModel):
     payment_method: str
     change_for: Optional[float] = None
     customer_notes: Optional[str] = ""
+    scheduled_for: Optional[str] = None   # ISO datetime string for scheduled orders
+    table_number: Optional[int] = None    # mesa (dine-in / QR code)
 
 
 ORDER_STATUSES = [
@@ -225,3 +238,68 @@ def clean(doc: dict) -> dict:
     if doc and "_id" in doc:
         doc = {k: v for k, v in doc.items() if k != "_id"}
     return doc
+
+
+# ---------- Combos ----------
+class ComboItemIn(BaseModel):
+    product_id: str
+    product_name: str
+    quantity: int = 1
+
+class ComboIn(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    image_url: Optional[str] = None
+    price: float = 0.0
+    is_active: bool = True
+    sort_order: int = 0
+    items: List[ComboItemIn] = []
+
+# ---------- Loyalty ----------
+class LoyaltySettings(BaseModel):
+    enabled: bool = False
+    points_per_real: float = 1.0       # points earned per R$ spent
+    min_points_redeem: int = 100        # minimum points to redeem
+    points_to_real: float = 0.10        # value of each point in R$
+    expiry_days: Optional[int] = None   # null = no expiry
+
+class LoyaltyTransaction(BaseModel):
+    customer_phone: str
+    points: int
+    type: Literal["earn", "redeem"]
+    order_id: Optional[str] = None
+    notes: Optional[str] = None
+
+# ---------- Wholesale / Atacado ----------
+class WholesaleMerchantIn(BaseModel):
+    company_name: str
+    contact_name: str
+    email: str
+    phone: str
+    cnpj: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    notes: Optional[str] = None
+
+class ServiceOrderIn(BaseModel):
+    merchant_id: str
+    items: List[ComboItemIn]   # reuse item structure
+    notes: Optional[str] = None
+    delivery_date: Optional[str] = None
+    payment_method: Optional[str] = None
+    discount: float = 0.0
+
+# ---------- PDV ----------
+class PDVOrderIn(BaseModel):
+    """Quick in-store order — no address required."""
+    customer_name: Optional[str] = "Cliente balcão"
+    customer_phone: Optional[str] = None
+    items: List[OrderItemIn]
+    subtotal: float
+    discount: float = 0.0
+    total: float
+    payment_method: str
+    change_for: Optional[float] = None
+    notes: Optional[str] = ""
+    loyalty_points_redeem: int = 0

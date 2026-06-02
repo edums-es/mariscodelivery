@@ -76,7 +76,7 @@ export default function ProductDrawer({ product, open, onOpenChange, onAdd }) {
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-w-md mx-auto max-h-[92vh] flex flex-col">
+      <DrawerContent className="max-w-md mx-auto max-h-[92vh] flex flex-col dark" style={{background:"#111111",color:"#f0f0f0",borderColor:"rgba(255,255,255,0.1)"}}>
         <div className="overflow-y-auto flex-1 min-h-0">
           {product.image_url && (
             <img src={product.image_url} alt={product.name}
@@ -108,10 +108,10 @@ export default function ProductDrawer({ product, open, onOpenChange, onAdd }) {
                           onClick={() => toggleOption(g, o.id)}
                           data-testid={`option-${o.id}`}
                           className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm transition-colors ${
-                            active ? "brand-border brand-soft" : "border-gray-200 bg-white"
+                            active ? "brand-border brand-soft" : "border-white/10 bg-[#1A1A1A]"
                           }`}>
                           <span className="flex items-center gap-2">
-                            <span className={`grid place-items-center w-5 h-5 rounded-${g.type === "single" ? "full" : "md"} border ${active ? "brand-bg border-transparent" : "border-gray-300"}`}>
+                            <span className={`grid place-items-center w-5 h-5 rounded-${g.type === "single" ? "full" : "md"} border ${active ? "brand-bg border-transparent" : "border-white/20"}`}>
                               {active && <Check className="w-3 h-3" />}
                             </span>
                             {o.name}
@@ -134,15 +134,15 @@ export default function ProductDrawer({ product, open, onOpenChange, onAdd }) {
           </div>
         </div>
 
-        <DrawerFooter className="flex-row items-center gap-3 border-t">
-          <div className="flex items-center gap-3 border border-gray-200 rounded-full px-2 py-1">
+        <DrawerFooter className="flex-row items-center gap-3 border-t" style={{borderColor:"rgba(255,255,255,0.1)"}}>
+          <div className="flex items-center gap-3 border border-white/15 rounded-full px-2 py-1">
             <button onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-              data-testid="qty-decrease" className="w-8 h-8 grid place-items-center rounded-full hover:bg-gray-100">
+              data-testid="qty-decrease" className="w-8 h-8 grid place-items-center rounded-full hover:bg-white/10 transition-colors">
               <Minus className="w-4 h-4" />
             </button>
             <span className="w-5 text-center font-semibold" data-testid="qty-value">{quantity}</span>
             <button onClick={() => setQuantity((q) => q + 1)}
-              data-testid="qty-increase" className="w-8 h-8 grid place-items-center rounded-full hover:bg-gray-100">
+              data-testid="qty-increase" className="w-8 h-8 grid place-items-center rounded-full hover:bg-white/10 transition-colors">
               <Plus className="w-4 h-4" />
             </button>
           </div>

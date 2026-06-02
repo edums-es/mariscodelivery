@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 
 from db import db
+from whatsapp import send_whatsapp
 from models import OrderIn, clean, is_restaurant_open, new_id, now_iso
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -29,6 +30,9 @@ async def get_menu(slug: str):
     banners = await db.banners.find(
         {"restaurant_id": r["id"], "is_active": True}, {"_id": 0}
     ).sort("sort_order", 1).to_list(50)
+    combos = await db.combos.find(
+        {"restaurant_id": r["id"], "is_active": True}, {"_id": 0}
+    ).sort("sort_order", 1).to_list(100)
     reviews = await db.reviews.find(
         {"restaurant_id": r["id"]}, {"_id": 0}
     ).sort("created_at", -1).to_list(200)
@@ -40,6 +44,7 @@ async def get_menu(slug: str):
         "categories": categories,
         "products": products,
         "banners": banners,
+        "combos": combos,
         "reviews": reviews[:20],
         "reviews_summary": {"average": avg, "count": len(reviews)},
     }
@@ -76,6 +81,52 @@ async def validate_coupon(slug: str, payload: dict):
     }
 
 
+
+async def _notify_new_order(restaurant: dict, order: dict, order_in):
+    """Send WhatsApp to restaurant owner when new order arrives."""
+    owner_phone = restaurant.get("whatsapp") or restaurant.get("phone")
+    if not owner_phone:
+        return
+    items_text = ""
+    for it in order_in.items:
+        items_text += f"\n  • {it.quantity}x {it.product_name} — {brl_fmt(it.total_price)}"
+        for op in (it.options or []):
+            items_text += f"\n    + {op.name}"
+    
+    delivery_type = "Entrega 🛵" if order_in.type == "delivery" else "Retirada 🏪"
+    address_text = ""
+    if order_in.address and order_in.type == "delivery":
+        a = order_in.address
+        address_text = f"\n📍 *Endereço:* {a.street}, {a.number}"
+        if a.complement:
+            address_text += f" - {a.complement}"
+        address_text += f"\n   {a.neighborhood}"
+
+    msg = (
+        f"🔔 *Novo pedido #{order['order_number']}!*\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"👤 *Cliente:* {order_in.customer.name}\n"
+        f"📱 *Telefone:* {order_in.customer.phone}\n"
+        f"🏷️ *Tipo:* {delivery_type}"
+        f"{address_text}\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🛒 *Itens:*{items_text}\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"💰 Subtotal: {brl_fmt(order_in.subtotal)}\n"
+        f"🛵 Entrega: {brl_fmt(order_in.delivery_fee)}\n"
+        f"💵 *TOTAL: {brl_fmt(order_in.total)}*\n"
+        f"💳 Pagamento: {order_in.payment_method}\n"
+        f"━━━━━━━━━━━━━━━━━━"
+    )
+    await send_whatsapp(restaurant, owner_phone, msg)
+
+
+def brl_fmt(value):
+    try:
+        return f"R$ {float(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return "R$ 0,00"
+
 @router.post("/restaurants/{slug}/orders")
 async def create_order(slug: str, order: OrderIn):
     r = await _get_restaurant_or_404(slug)
@@ -89,6 +140,7 @@ async def create_order(slug: str, order: OrderIn):
     count = await db.orders.count_documents({"restaurant_id": r["id"]})
     order_number = count + 1
     doc = order.model_dump()
+    # scheduled_for and table_number come from OrderIn fields (already in model_dump)
     doc.update({
         "id": new_id(),
         "restaurant_id": r["id"],
@@ -99,12 +151,80 @@ async def create_order(slug: str, order: OrderIn):
         "updated_at": now_iso(),
     })
     await db.orders.insert_one(doc)
+
+    # Notify restaurant owner about new order
+    import asyncio
+    asyncio.create_task(_notify_new_order(r, clean(doc), order))
+
     if order.coupon_code:
         await db.coupons.update_one(
             {"restaurant_id": r["id"], "code": order.coupon_code.upper()},
             {"$inc": {"used_count": 1}},
         )
-    return clean(doc)
+    # Decrement stock for tracked products
+    for item in order.items:
+        prod = await db.products.find_one({"id": item.product_id, "restaurant_id": r["id"]})
+        if prod and prod.get("track_stock"):
+            new_qty = max(0, (prod.get("stock_quantity") or 0) - item.quantity)
+            await db.products.update_one({"id": item.product_id}, {"$set": {"stock_quantity": new_qty}})
+    # Loyalty: earn points automatically
+    loyalty_cfg = r.get("loyalty", {})
+    if loyalty_cfg.get("enabled") and order.customer.phone:
+        ppr = loyalty_cfg.get("points_per_real", 1.0)
+        pts = int(order.total * ppr)
+        if pts > 0:
+            acc = await db.loyalty_accounts.find_one({"restaurant_id": r["id"], "phone": order.customer.phone})
+            if acc:
+                await db.loyalty_accounts.update_one(
+                    {"restaurant_id": r["id"], "phone": order.customer.phone},
+                    {"$inc": {"points": pts, "total_earned": pts}, "$set": {"name": order.customer.name}}
+                )
+            else:
+                await db.loyalty_accounts.insert_one({
+                    "id": new_id(), "restaurant_id": r["id"],
+                    "phone": order.customer.phone, "name": order.customer.name,
+                    "points": pts, "total_earned": pts, "total_redeemed": 0,
+                    "created_at": now_iso(),
+                })
+    # ── OpenPix / Woovi automatic PIX charge ──────────────────────────
+    pix_charge = None
+    openpix_app_id = r.get("openpix_app_id", "")
+    if openpix_app_id and order.payment_method.lower() in ("pix", "pix automático"):
+        try:
+            import httpx as _httpx
+            async with _httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    "https://api.openpix.com.br/api/v1/charge",
+                    headers={"Authorization": f"App {openpix_app_id}"},
+                    json={
+                        "correlationID": doc["id"],
+                        "value": int(round(order.total * 100)),
+                        "comment": f"Pedido #{order_number} — {r.get('name', '')}",
+                        "customer": {
+                            "name": order.customer.name,
+                            "phone": order.customer.phone or "",
+                        },
+                    },
+                )
+            if resp.status_code in (200, 201):
+                charge = resp.json().get("charge", {})
+                pix_charge = {
+                    "qr_code_image": charge.get("qrCodeImage"),
+                    "br_code": charge.get("brCode"),
+                    "correlation_id": charge.get("correlationID"),
+                    "status": charge.get("status"),
+                }
+                await db.orders.update_one(
+                    {"id": doc["id"]},
+                    {"$set": {"pix_charge": pix_charge, "payment_status": "awaiting"}},
+                )
+        except Exception:
+            pass  # OpenPix failure must never block order creation
+
+    result = clean(doc)
+    if pix_charge:
+        result["pix_charge"] = pix_charge
+    return result
 
 
 @router.get("/orders/{order_id}")

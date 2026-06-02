@@ -1,31 +1,39 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { UtensilsCrossed, Loader2 } from "lucide-react";
+import { Loader2, Eye, EyeOff, ChefHat, ArrowRight, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { formatApiError } from "@/lib/api";
+
+const G  = "#D4AF37";
+const G2 = "#B8860B";
+const BK = "#0A0A0A";
+
+const INP = {
+  width: "100%", boxSizing: "border-box",
+  height: 46, borderRadius: 10,
+  background: "#161616", border: "1px solid #2a2a2a",
+  color: "#E5E5E5", fontSize: 14, padding: "0 14px",
+  fontFamily: "Manrope, sans-serif", outline: "none",
+  transition: "border-color .2s",
+};
 
 export default function LoginPage() {
   const { user, login, register } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [tab, setTab] = useState("login");
+  const [showPass, setShowPass] = useState(false);
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
-
-  const [rName, setRName] = useState("");
-  const [rEmail, setREmail] = useState("");
-  const [rPass, setRPass] = useState("");
-  const [rStore, setRStore] = useState("");
+  const [rName, setRName]       = useState("");
+  const [rEmail, setREmail]     = useState("");
+  const [rPass, setRPass]       = useState("");
+  const [rStore, setRStore]     = useState("");
 
   useEffect(() => {
-    if (user && user.role) {
-      navigate(user.role === "super_admin" ? "/super" : "/admin", { replace: true });
-    }
+    if (user?.role) navigate(user.role === "super_admin" ? "/super" : "/admin", { replace: true });
   }, [user, navigate]);
 
   const handleLogin = async (e) => {
@@ -37,117 +45,215 @@ export default function LoginPage() {
       navigate(u.role === "super_admin" ? "/super" : "/admin", { replace: true });
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || "Falha no login");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const handleRegister = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const data = await register({
-        name: rName, email: rEmail, password: rPass, restaurant_name: rStore,
-      });
-      toast.success("Restaurante criado! Configure seu cardápio.");
+      await register({ name: rName, email: rEmail, password: rPass, restaurant_name: rStore });
+      toast.success("Restaurante criado!");
       navigate("/admin", { replace: true });
-      void data;
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || "Falha no cadastro");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2 font-body">
-      <div className="hidden lg:flex flex-col justify-between p-12 brand-bg relative overflow-hidden">
-        <Link to="/" className="flex items-center gap-2 font-display font-bold text-xl">
-          <UtensilsCrossed className="w-6 h-6" /> MenuFlow
+    <div style={{ minHeight: "100vh", display: "flex", background: BK, fontFamily: "Manrope, sans-serif", color: "#E5E5E5" }}>
+
+      {/* ── LEFT PANEL ── */}
+      <div style={{
+        width: "42%", flexShrink: 0,
+        background: `linear-gradient(160deg, #141414 0%, #0F0F0F 100%)`,
+        borderRight: "1px solid #1e1e1e",
+        display: "flex", flexDirection: "column",
+        padding: "40px 48px", position: "relative", overflow: "hidden",
+      }} className="login-left">
+
+        {/* Logo */}
+        <Link to="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", zIndex: 1 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: `${G}18`, border: `1px solid ${G}40`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <ChefHat size={18} color={G} />
+          </div>
+          <span style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 18, color: "#E5E5E5" }}>MenuFlow</span>
         </Link>
-        <div className="relative z-10">
-          <h2 className="font-display font-extrabold text-4xl leading-tight tracking-tight">
+
+        {/* Center text */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", zIndex: 1 }}>
+          <div style={{ width: 32, height: 2, background: G, borderRadius: 2, marginBottom: 28 }} />
+          <h2 style={{ margin: "0 0 16px", fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 36, lineHeight: 1.15, color: "#F0F0F0" }}>
             Gerencie seu restaurante com facilidade.
           </h2>
-          <p className="opacity-80 mt-4 max-w-sm">
+          <p style={{ margin: "0 0 32px", fontSize: 14, lineHeight: 1.75, color: "#555" }}>
             Cardápio digital, pedidos e relatórios em um painel feito para o dia a dia da sua cozinha.
           </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {["Cardápio Digital", "Gestão de Pedidos", "Relatórios", "PDV", "Fidelidade", "Atacado"].map((f) => (
+              <span key={f} style={{ fontSize: 12, fontWeight: 600, background: "#1A1A1A", border: "1px solid #2a2a2a", color: "#777", padding: "5px 12px", borderRadius: 100 }}>
+                {f}
+              </span>
+            ))}
+          </div>
         </div>
-        <div className="absolute -right-20 -bottom-20 w-80 h-80 rounded-full bg-white/10" />
+
+        {/* Decorative circles */}
+        <div style={{ position: "absolute", right: -80, bottom: -80, width: 240, height: 240, borderRadius: "50%", border: `1px solid ${G}12`, pointerEvents: "none" }} />
+        <div style={{ position: "absolute", right: -40, bottom: -40, width: 140, height: 140, borderRadius: "50%", border: `1px solid ${G}18`, pointerEvents: "none" }} />
+        <div style={{ position: "absolute", right: 40, top: 120, width: 100, height: 100, borderRadius: "50%", border: "1px solid #1e1e1e", pointerEvents: "none" }} />
       </div>
 
-      <div className="flex items-center justify-center p-6 bg-[#FAFAFA]">
-        <div className="w-full max-w-sm">
-          <Link to="/" className="lg:hidden flex items-center gap-2 font-display font-bold text-xl mb-8 brand-text">
-            <UtensilsCrossed className="w-6 h-6" /> MenuFlow
-          </Link>
-          <Tabs defaultValue="login">
-            <TabsList className="grid grid-cols-2 w-full mb-6">
-              <TabsTrigger value="login" data-testid="tab-login">Entrar</TabsTrigger>
-              <TabsTrigger value="register" data-testid="tab-register">Criar conta</TabsTrigger>
-            </TabsList>
+      {/* ── RIGHT PANEL ── */}
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 24px" }}>
+        <div style={{ width: "100%", maxWidth: 400 }}>
 
-            <TabsContent value="login">
-              <h1 className="font-display font-bold text-2xl mb-1">Acesse seu painel</h1>
-              <p className="text-sm text-gray-500 mb-6">Entre com seu e-mail e senha.</p>
-              <form onSubmit={handleLogin} className="space-y-4">
+          {/* Tab switcher */}
+          <div style={{ display: "flex", background: "#111", border: "1px solid #222", borderRadius: 14, padding: 4, marginBottom: 32 }}>
+            {[["login", "Entrar"], ["register", "Criar conta"]].map(([key, label]) => (
+              <button key={key} onClick={() => setTab(key)}
+                data-testid={`tab-${key}`}
+                style={{
+                  flex: 1, height: 40, borderRadius: 10, border: "none", cursor: "pointer",
+                  fontFamily: "Manrope, sans-serif", fontSize: 14, fontWeight: 600,
+                  transition: "all .2s",
+                  background: tab === key ? G : "transparent",
+                  color: tab === key ? BK : "#555",
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {tab === "login" ? (
+            <div>
+              <h1 style={{ margin: "0 0 6px", fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 26, color: "#F0F0F0" }}>
+                Acesse seu painel
+              </h1>
+              <p style={{ margin: "0 0 28px", fontSize: 13, color: "#444" }}>Entre com suas credenciais para continuar.</p>
+
+              <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <div>
-                  <Label htmlFor="email">E-mail</Label>
-                  <Input id="email" type="email" required value={email}
-                    onChange={(e) => setEmail(e.target.value)} data-testid="login-email"
-                    placeholder="voce@restaurante.com" className="mt-1.5" />
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#555", marginBottom: 7 }}>E-mail</label>
+                  <input
+                    type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                    data-testid="login-email" placeholder="voce@restaurante.com"
+                    style={INP}
+                    onFocus={(e) => e.target.style.borderColor = G}
+                    onBlur={(e) => e.target.style.borderColor = "#2a2a2a"}
+                  />
                 </div>
+
                 <div>
-                  <Label htmlFor="password">Senha</Label>
-                  <Input id="password" type="password" required value={password}
-                    onChange={(e) => setPassword(e.target.value)} data-testid="login-password"
-                    placeholder="••••••••" className="mt-1.5" />
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#555", marginBottom: 7 }}>Senha</label>
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type={showPass ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)}
+                      data-testid="login-password" placeholder="••••••••"
+                      style={{ ...INP, paddingRight: 44 }}
+                      onFocus={(e) => e.target.style.borderColor = G}
+                      onBlur={(e) => e.target.style.borderColor = "#2a2a2a"}
+                    />
+                    <button type="button" onClick={() => setShowPass((s) => !s)}
+                      style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#444", padding: 0, display: "flex" }}>
+                      {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
-                <Button type="submit" disabled={loading} data-testid="login-submit"
-                  className="w-full brand-bg hover:opacity-90 h-11 rounded-xl">
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Entrar"}
-                </Button>
+
+                <button type="submit" disabled={loading} data-testid="login-submit"
+                  style={{
+                    height: 48, borderRadius: 10, border: "none", cursor: loading ? "not-allowed" : "pointer",
+                    background: `linear-gradient(135deg, ${G}, ${G2})`,
+                    color: BK, fontSize: 14, fontWeight: 700,
+                    fontFamily: "Manrope, sans-serif",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    marginTop: 4, opacity: loading ? 0.7 : 1,
+                    boxShadow: `0 4px 20px ${G}30`,
+                  }}>
+                  {loading ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <><span>Entrar</span><ArrowRight size={16} /></>}
+                </button>
               </form>
-              <div className="mt-6 text-xs text-gray-400 bg-white border border-gray-100 rounded-xl p-3 space-y-1">
-                <p className="font-semibold text-gray-500">Contas de teste:</p>
-                <p>Restaurante: dono@burger.com / dono123</p>
-                <p>Super admin: super@menudigital.com / super123</p>
+
+              {/* Test accounts */}
+              <div style={{ marginTop: 24, background: "#111", border: "1px solid #1e1e1e", borderRadius: 12, padding: 16 }}>
+                <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#444" }}>Contas de teste</p>
+                <button type="button" onClick={() => { setEmail("dono@burger.com"); setPassword("dono123"); }}
+                  style={{ width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "8px 10px", borderRadius: 8, marginBottom: 4, transition: "background .15s" }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = "#1a1a1a"}
+                  onMouseLeave={(e) => e.currentTarget.style.background = "none"}>
+                  <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "#999" }}>Restaurante</p>
+                  <p style={{ margin: 0, fontSize: 11, color: "#444" }}>dono@burger.com · dono123</p>
+                </button>
+                <button type="button" onClick={() => { setEmail("super@menudigital.com"); setPassword("super123"); }}
+                  style={{ width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "8px 10px", borderRadius: 8, transition: "background .15s" }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = "#1a1a1a"}
+                  onMouseLeave={(e) => e.currentTarget.style.background = "none"}>
+                  <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: G }}>Super Admin</p>
+                  <p style={{ margin: 0, fontSize: 11, color: "#444" }}>super@menudigital.com · super123</p>
+                </button>
               </div>
-            </TabsContent>
+            </div>
+          ) : (
+            <div>
+              <h1 style={{ margin: "0 0 6px", fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 26, color: "#F0F0F0" }}>
+                Crie seu cardápio
+              </h1>
+              <p style={{ margin: "0 0 28px", fontSize: 13, color: "#444" }}>Comece grátis. Sem cartão de crédito.</p>
 
-            <TabsContent value="register">
-              <h1 className="font-display font-bold text-2xl mb-1">Crie seu cardápio</h1>
-              <p className="text-sm text-gray-500 mb-6">Comece grátis em segundos.</p>
-              <form onSubmit={handleRegister} className="space-y-4">
+              <form onSubmit={handleRegister} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {[
+                  { label: "Nome do restaurante", value: rStore, set: setRStore, placeholder: "Ex: Burger do Zé", testId: "register-store", type: "text" },
+                  { label: "Seu nome", value: rName, set: setRName, placeholder: "João Silva", testId: "register-name", type: "text" },
+                  { label: "E-mail", value: rEmail, set: setREmail, placeholder: "voce@email.com", testId: "register-email", type: "email" },
+                ].map(({ label, value, set: setter, placeholder, testId, type }) => (
+                  <div key={testId}>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#555", marginBottom: 7 }}>{label}</label>
+                    <input type={type} required value={value} onChange={(e) => setter(e.target.value)}
+                      data-testid={testId} placeholder={placeholder} style={INP}
+                      onFocus={(e) => e.target.style.borderColor = G}
+                      onBlur={(e) => e.target.style.borderColor = "#2a2a2a"} />
+                  </div>
+                ))}
                 <div>
-                  <Label htmlFor="rstore">Nome do restaurante</Label>
-                  <Input id="rstore" required value={rStore} onChange={(e) => setRStore(e.target.value)}
-                    data-testid="register-store" placeholder="Ex: Burger do Zé" className="mt-1.5" />
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#555", marginBottom: 7 }}>Senha</label>
+                  <div style={{ position: "relative" }}>
+                    <input type={showPass ? "text" : "password"} required minLength={6} value={rPass} onChange={(e) => setRPass(e.target.value)}
+                      data-testid="register-password" placeholder="Mínimo 6 caracteres"
+                      style={{ ...INP, paddingRight: 44 }}
+                      onFocus={(e) => e.target.style.borderColor = G}
+                      onBlur={(e) => e.target.style.borderColor = "#2a2a2a"} />
+                    <button type="button" onClick={() => setShowPass((s) => !s)}
+                      style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#444", padding: 0, display: "flex" }}>
+                      {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="rname">Seu nome</Label>
-                  <Input id="rname" required value={rName} onChange={(e) => setRName(e.target.value)}
-                    data-testid="register-name" className="mt-1.5" />
-                </div>
-                <div>
-                  <Label htmlFor="remail">E-mail</Label>
-                  <Input id="remail" type="email" required value={rEmail} onChange={(e) => setREmail(e.target.value)}
-                    data-testid="register-email" className="mt-1.5" />
-                </div>
-                <div>
-                  <Label htmlFor="rpass">Senha</Label>
-                  <Input id="rpass" type="password" required minLength={6} value={rPass}
-                    onChange={(e) => setRPass(e.target.value)} data-testid="register-password" className="mt-1.5" />
-                </div>
-                <Button type="submit" disabled={loading} data-testid="register-submit"
-                  className="w-full brand-bg hover:opacity-90 h-11 rounded-xl">
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Criar restaurante"}
-                </Button>
+                <button type="submit" disabled={loading} data-testid="register-submit"
+                  style={{
+                    height: 48, borderRadius: 10, border: "none", cursor: loading ? "not-allowed" : "pointer",
+                    background: `linear-gradient(135deg, ${G}, ${G2})`,
+                    color: BK, fontSize: 14, fontWeight: 700,
+                    fontFamily: "Manrope, sans-serif",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    marginTop: 4, opacity: loading ? 0.7 : 1,
+                    boxShadow: `0 4px 20px ${G}30`,
+                  }}>
+                  {loading ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <><span>Criar restaurante</span><ArrowRight size={16} /></>}
+                </button>
               </form>
-            </TabsContent>
-          </Tabs>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Mobile: hide left panel */}
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @media (max-width: 768px) {
+          .login-left { display: none !important; }
+        }
+      `}</style>
     </div>
   );
 }

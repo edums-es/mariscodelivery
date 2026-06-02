@@ -12,9 +12,13 @@ from starlette.middleware.cors import CORSMiddleware
 from db import client
 import auth
 import storage
+import whatsapp
+import routes_extras
 import routes_public
 import routes_admin
 import routes_superadmin
+import routes_advanced
+import routes_billing
 from seed import seed
 
 logging.basicConfig(level=logging.INFO,
@@ -34,9 +38,15 @@ async def root():
 app.include_router(api_router)
 app.include_router(auth.router)
 app.include_router(storage.router)
+app.include_router(whatsapp.router)
+app.include_router(routes_extras.router)
+app.include_router(routes_extras.public_wholesale_router)
 app.include_router(routes_public.router)
 app.include_router(routes_admin.router)
 app.include_router(routes_superadmin.router)
+app.include_router(routes_advanced.router)
+app.include_router(routes_advanced.public_router)
+app.include_router(routes_billing.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -49,11 +59,6 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def on_startup():
-    try:
-        storage.init_storage()
-        logger.info("Storage initialized")
-    except Exception as e:
-        logger.error(f"Storage init failed: {e}")
     try:
         await seed()
         logger.info("Seed complete")

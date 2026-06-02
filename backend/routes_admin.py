@@ -1,10 +1,15 @@
 """Restaurant admin endpoints — tenant-scoped, auth required."""
+import asyncio
+import io
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+import openpyxl
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
 
 from db import db
 from auth import require_restaurant
+from whatsapp import notify_order_status
 from models import (
     CategoryIn, ProductIn, CouponIn, BannerIn, RestaurantSettings, StatusUpdate,
     ORDER_STATUSES, clean, new_id, now_iso, is_restaurant_open,
@@ -43,6 +48,14 @@ async def toggle_open(user=Depends(require_restaurant)):
     new_val = not bool(r.get("is_open_manual", True))
     await db.restaurants.update_one({"id": rid(user)}, {"$set": {"is_open_manual": new_val}})
     return {"is_open_manual": new_val}
+
+
+@router.get("/restaurant/slug")
+async def get_restaurant_slug(user=Depends(require_restaurant)):
+    r = await db.restaurants.find_one({"id": rid(user)}, {"slug": 1, "_id": 0})
+    if not r:
+        raise HTTPException(404, "Restaurante não encontrado")
+    return {"slug": r.get("slug", "")}
 
 
 # ---------- categories ----------
@@ -104,6 +117,163 @@ async def delete_product(pid: str, user=Depends(require_restaurant)):
     return {"ok": True}
 
 
+@router.get("/products/export")
+async def export_products(user=Depends(require_restaurant)):
+    products = await db.products.find({"restaurant_id": rid(user)}, {"_id": 0}).sort("sort_order", 1).to_list(1000)
+
+    # Build category id -> name map
+    cat_ids = list({p.get("category_id") for p in products if p.get("category_id")})
+    categories = await db.categories.find({"id": {"$in": cat_ids}}, {"_id": 0, "id": 1, "name": 1}).to_list(500)
+    cat_map = {c["id"]: c["name"] for c in categories}
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Produtos"
+    headers = [
+        "name", "description", "price", "promotional_price",
+        "category_name", "is_available", "is_best_seller", "is_featured",
+        "track_stock", "stock_quantity", "image_url",
+    ]
+    ws.append(headers)
+
+    for p in products:
+        ws.append([
+            p.get("name", ""),
+            p.get("description", ""),
+            p.get("price", 0),
+            p.get("promotional_price", ""),
+            cat_map.get(p.get("category_id", ""), ""),
+            p.get("is_available", True),
+            p.get("is_best_seller", False),
+            p.get("is_featured", False),
+            p.get("track_stock", False),
+            p.get("stock_quantity", ""),
+            p.get("image_url", ""),
+        ])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=produtos.xlsx"},
+    )
+
+
+@router.post("/products/import")
+async def import_products(file: UploadFile = File(...), user=Depends(require_restaurant)):
+    contents = await file.read()
+    try:
+        wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True)
+    except Exception as exc:
+        raise HTTPException(400, f"Arquivo inválido: {exc}")
+
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return {"imported": 0, "updated": 0, "errors": []}
+
+    # Determine column positions from header row
+    header = [str(h).strip().lower() if h else "" for h in rows[0]]
+    col = {name: idx for idx, name in enumerate(header)}
+
+    required_cols = {"name", "price"}
+    missing = required_cols - set(col.keys())
+    if missing:
+        raise HTTPException(400, f"Colunas obrigatórias ausentes: {missing}")
+
+    restaurant_id = rid(user)
+    imported = 0
+    updated = 0
+    errors = []
+
+    for row_num, row in enumerate(rows[1:], start=2):
+        try:
+            def _get(field, default=None):
+                idx = col.get(field)
+                if idx is None:
+                    return default
+                val = row[idx] if idx < len(row) else None
+                return val if val is not None else default
+
+            name = str(_get("name", "")).strip()
+            if not name:
+                errors.append(f"Linha {row_num}: nome vazio, ignorado")
+                continue
+
+            try:
+                price = float(_get("price", 0) or 0)
+            except (ValueError, TypeError):
+                errors.append(f"Linha {row_num}: preço inválido para '{name}'")
+                continue
+
+            promo_raw = _get("promotional_price")
+            try:
+                promotional_price = float(promo_raw) if promo_raw not in (None, "", "none", "null") else None
+            except (ValueError, TypeError):
+                promotional_price = None
+
+            description = str(_get("description", "") or "")
+            category_name = str(_get("category_name", "") or "").strip()
+            is_available = bool(_get("is_available", True))
+            is_best_seller = bool(_get("is_best_seller", False))
+
+            # Resolve or create category
+            category_id = None
+            if category_name:
+                cat = await db.categories.find_one(
+                    {"restaurant_id": restaurant_id, "name": {"$regex": f"^{category_name}$", "$options": "i"}}
+                )
+                if cat:
+                    category_id = cat["id"]
+                else:
+                    category_id = new_id()
+                    await db.categories.insert_one({
+                        "id": category_id,
+                        "restaurant_id": restaurant_id,
+                        "name": category_name,
+                        "sort_order": 0,
+                        "created_at": now_iso(),
+                    })
+
+            payload = {
+                "name": name,
+                "description": description,
+                "price": price,
+                "promotional_price": promotional_price,
+                "category_id": category_id,
+                "is_available": is_available,
+                "is_best_seller": is_best_seller,
+                "updated_at": now_iso(),
+            }
+
+            existing = await db.products.find_one(
+                {"restaurant_id": restaurant_id, "name": {"$regex": f"^{name}$", "$options": "i"}}
+            )
+            if existing:
+                await db.products.update_one({"id": existing["id"]}, {"$set": payload})
+                updated += 1
+            else:
+                payload.update({
+                    "id": new_id(),
+                    "restaurant_id": restaurant_id,
+                    "is_featured": False,
+                    "track_stock": False,
+                    "stock_quantity": None,
+                    "image_url": None,
+                    "sort_order": 0,
+                    "created_at": now_iso(),
+                })
+                await db.products.insert_one(payload)
+                imported += 1
+
+        except Exception as exc:
+            errors.append(f"Linha {row_num}: erro inesperado — {exc}")
+
+    return {"imported": imported, "updated": updated, "errors": errors}
+
+
 # ---------- orders ----------
 @router.get("/orders")
 async def list_orders(status: str = None, user=Depends(require_restaurant)):
@@ -130,7 +300,10 @@ async def update_order_status(oid: str, data: StatusUpdate, user=Depends(require
         {"$set": {"status": data.status, "updated_at": now_iso()}})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Pedido não encontrado")
-    return await db.orders.find_one({"id": oid}, {"_id": 0})
+    order = await db.orders.find_one({"id": oid}, {"_id": 0})
+    # Fire-and-forget WhatsApp notification
+    asyncio.create_task(notify_order_status(order, data.status))
+    return order
 
 
 # ---------- coupons ----------
@@ -234,35 +407,16 @@ async def dashboard(user=Depends(require_restaurant)):
 
 @router.get("/reports")
 async def reports(period: str = "7d", user=Depends(require_restaurant)):
-    days = {"today": 1, "7d": 7, "30d": 30}.get(period, 7)
+    days = {"today": 1, "7d": 7, "30d": 30, "90d": 90}.get(period, 7)
     try:
         from zoneinfo import ZoneInfo
         now = datetime.now(ZoneInfo("America/Sao_Paulo"))
     except Exception:
         now = datetime.now()
     start = (now - timedelta(days=days)).isoformat()
-    orders = await db.orders.find(
-        {"restaurant_id": rid(user), "created_at": {"$gte": start}, "status": {"$ne": "cancelled"}},
+    # Fetch ALL orders (including cancelled) so frontend can compute cancel rate
+    all_orders = await db.orders.find(
+        {"restaurant_id": rid(user), "created_at": {"$gte": start}},
         {"_id": 0},
     ).to_list(5000)
-    revenue = sum(o["total"] for o in orders)
-
-    by_day = {}
-    payment = {}
-    prod = {}
-    for o in orders:
-        d = (o.get("created_at") or "")[:10]
-        by_day[d] = by_day.get(d, 0) + o["total"]
-        pm = o.get("payment_method", "—")
-        payment[pm] = payment.get(pm, 0) + 1
-        for it in o.get("items", []):
-            prod[it["product_name"]] = prod.get(it["product_name"], 0) + it.get("quantity", 1)
-
-    return {
-        "total_orders": len(orders),
-        "revenue": round(revenue, 2),
-        "avg_ticket": round(revenue / len(orders), 2) if orders else 0,
-        "by_day": [{"date": k, "total": round(v, 2)} for k, v in sorted(by_day.items())],
-        "payment_methods": [{"method": k, "count": v} for k, v in sorted(payment.items(), key=lambda x: -x[1])],
-        "top_products": [{"name": k, "qty": v} for k, v in sorted(prod.items(), key=lambda x: -x[1])[:8]],
-    }
+    return {"orders": all_orders}

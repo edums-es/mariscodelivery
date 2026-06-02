@@ -102,3 +102,117 @@ async def metrics(user=Depends(SUPER)):
         "gmv": gmv,
         "plans": [{"plan": k, "count": v} for k, v in plans.items()],
     }
+
+
+# ── Extended Super Admin endpoints ─────────────────────────────────────────
+
+@router.get("/restaurants/{rid}")
+async def get_restaurant_detail(rid: str, user=Depends(SUPER)):
+    r = await db.restaurants.find_one({"id": rid}, {"_id": 0})
+    if not r: raise HTTPException(404, "Não encontrado")
+    r["order_count"] = await db.orders.count_documents({"restaurant_id": rid})
+    r["product_count"] = await db.products.count_documents({"restaurant_id": rid})
+    r["revenue"] = 0
+    orders = await db.orders.find({"restaurant_id": rid, "status": {"$ne": "cancelled"}}, {"total": 1, "_id": 0}).to_list(10000)
+    r["revenue"] = round(sum(o.get("total", 0) for o in orders), 2)
+    return r
+
+@router.delete("/restaurants/{rid}")
+async def delete_restaurant(rid: str, user=Depends(SUPER)):
+    await db.restaurants.delete_one({"id": rid})
+    await db.users.delete_many({"restaurant_id": rid})
+    await db.orders.delete_many({"restaurant_id": rid})
+    await db.products.delete_many({"restaurant_id": rid})
+    await db.categories.delete_many({"restaurant_id": rid})
+    return {"ok": True}
+
+@router.post("/restaurants/{rid}/toggle-status")
+async def toggle_restaurant_status(rid: str, user=Depends(SUPER)):
+    r = await db.restaurants.find_one({"id": rid})
+    if not r: raise HTTPException(404, "Não encontrado")
+    new_status = "suspended" if r.get("status") == "active" else "active"
+    await db.restaurants.update_one({"id": rid}, {"$set": {"status": new_status, "updated_at": now_iso()}})
+    return {"status": new_status}
+
+@router.get("/restaurants/{rid}/orders")
+async def restaurant_orders(rid: str, user=Depends(SUPER)):
+    return await db.orders.find({"restaurant_id": rid}, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+@router.get("/restaurants/{rid}/revenue-chart")
+async def restaurant_revenue_chart(rid: str, user=Depends(SUPER)):
+    from datetime import timedelta
+    orders = await db.orders.find(
+        {"restaurant_id": rid, "status": {"$ne": "cancelled"}}, {"total": 1, "created_at": 1, "_id": 0}
+    ).to_list(10000)
+    # Group by day (last 30 days)
+    today = datetime.now(timezone.utc).date()
+    days = {}
+    for i in range(29, -1, -1):
+        d = (today - timedelta(days=i)).isoformat()
+        days[d] = 0
+    for o in orders:
+        d = (o.get("created_at") or "")[:10]
+        if d in days:
+            days[d] = round(days[d] + o.get("total", 0), 2)
+    return [{"date": k, "revenue": v} for k, v in days.items()]
+
+@router.put("/users/{uid}")
+async def update_user(uid: str, body: dict, user=Depends(SUPER)):
+    from bson import ObjectId
+    allowed = {"name", "email", "role", "is_active"}
+    patch = {k: v for k, v in body.items() if k in allowed}
+    patch["updated_at"] = now_iso()
+    await db.users.update_one({"_id": ObjectId(uid)}, {"$set": patch})
+    u = await db.users.find_one({"_id": ObjectId(uid)}, {"password_hash": 0})
+    return {"id": str(u["_id"]), "email": u["email"], "name": u.get("name"), "role": u.get("role")}
+
+@router.delete("/users/{uid}")
+async def delete_user(uid: str, user=Depends(SUPER)):
+    from bson import ObjectId
+    await db.users.delete_one({"_id": ObjectId(uid)})
+    return {"ok": True}
+
+@router.post("/users/{uid}/reset-password")
+async def reset_user_password(uid: str, body: dict, user=Depends(SUPER)):
+    from bson import ObjectId
+    new_pw = body.get("password", "")
+    if len(new_pw) < 6:
+        raise HTTPException(400, "Senha deve ter ao menos 6 caracteres")
+    await db.users.update_one({"_id": ObjectId(uid)}, {"$set": {"password_hash": hash_password(new_pw)}})
+    return {"ok": True}
+
+@router.get("/activity")
+async def platform_activity(user=Depends(SUPER)):
+    """Recent orders across all restaurants."""
+    orders = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    # Enrich with restaurant name
+    for o in orders:
+        r = await db.restaurants.find_one({"id": o.get("restaurant_id")}, {"name": 1, "_id": 0})
+        o["restaurant_name"] = r["name"] if r else "—"
+    return orders
+
+@router.get("/metrics/chart")
+async def metrics_chart(user=Depends(SUPER)):
+    from datetime import timedelta
+    today = datetime.now(timezone.utc).date()
+    days = {}
+    for i in range(29, -1, -1):
+        d = (today - timedelta(days=i)).isoformat()
+        days[d] = {"orders": 0, "revenue": 0, "new_restaurants": 0}
+    
+    orders = await db.orders.find(
+        {"status": {"$ne": "cancelled"}}, {"total": 1, "created_at": 1, "_id": 0}
+    ).to_list(50000)
+    for o in orders:
+        d = (o.get("created_at") or "")[:10]
+        if d in days:
+            days[d]["orders"] += 1
+            days[d]["revenue"] = round(days[d]["revenue"] + o.get("total", 0), 2)
+
+    restaurants = await db.restaurants.find({}, {"created_at": 1, "_id": 0}).to_list(10000)
+    for r in restaurants:
+        d = (r.get("created_at") or "")[:10]
+        if d in days:
+            days[d]["new_restaurants"] += 1
+
+    return [{"date": k, **v} for k, v in days.items()]

@@ -10,15 +10,18 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
-import { Minus, Plus, Trash2, MessageCircle, ShoppingBag, ArrowLeft, Ticket, Check } from "lucide-react";
+import { Minus, Plus, Trash2, MessageCircle, ShoppingBag, ArrowLeft, Ticket, Check, Copy, QrCode } from "lucide-react";
+import { maskPhone } from "@/lib/masks";
 import { useCart } from "@/context/CartContext";
 import api, { formatApiError } from "@/lib/api";
 import { brl } from "@/lib/format";
 
 export default function CartSheet({ open, onOpenChange, restaurant, slug }) {
   const { items, updateQuantity, removeItem, subtotal, clearCart } = useCart();
-  const [step, setStep] = useState("cart"); // cart | checkout
+  const [step, setStep] = useState("cart"); // cart | checkout | pix
   const [submitting, setSubmitting] = useState(false);
+  const [pixCharge, setPixCharge] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   // coupon
   const [couponInput, setCouponInput] = useState("");
@@ -141,6 +144,21 @@ export default function CartSheet({ open, onOpenChange, restaurant, slug }) {
     setSubmitting(true);
     try {
       const { data } = await api.post(`/public/restaurants/${slug}/orders`, buildOrderPayload());
+
+      // Se veio QR Code Pix automático, mostra tela de pagamento
+      if (data.pix_charge?.br_code) {
+        setPixCharge(data.pix_charge);
+        setStep("pix");
+        toast.success(`Pedido #${data.order_number} criado! Escaneie o QR Code para pagar.`);
+        // Envia também pelo WhatsApp se solicitado
+        if (viaWhatsapp && restaurant?.whatsapp) {
+          const msg = buildWhatsappMessage(data.order_number);
+          window.open(`https://wa.me/${restaurant.whatsapp}?text=${msg}`, "_blank");
+        }
+        clearCart();
+        return;
+      }
+
       if (viaWhatsapp && restaurant?.whatsapp) {
         const msg = buildWhatsappMessage(data.order_number);
         window.open(`https://wa.me/${restaurant.whatsapp}?text=${msg}`, "_blank");
@@ -156,21 +174,92 @@ export default function CartSheet({ open, onOpenChange, restaurant, slug }) {
     }
   };
 
+  const copyPixCode = () => {
+    if (!pixCharge?.br_code) return;
+    navigator.clipboard.writeText(pixCharge.br_code).then(() => {
+      setCopied(true);
+      toast.success("Código Pix copiado!");
+      setTimeout(() => setCopied(false), 3000);
+    });
+  };
+
+  const closePix = () => {
+    setPixCharge(null);
+    setStep("cart");
+    onOpenChange(false);
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-w-md mx-auto rounded-t-2xl max-h-[92vh] overflow-y-auto p-0">
-        <SheetHeader className="p-4 border-b sticky top-0 bg-white z-10">
+      <SheetContent side="bottom" className="max-w-md mx-auto rounded-t-2xl max-h-[92vh] overflow-y-auto p-0 dark" style={{background:"#111111",color:"#f0f0f0",borderColor:"rgba(255,255,255,0.1)"}}>
+        <SheetHeader className="p-4 border-b sticky top-0 z-10" style={{background:"#111111",borderColor:"rgba(255,255,255,0.1)"}}>
           <SheetTitle className="font-display flex items-center gap-2">
             {step === "checkout" && (
               <button onClick={() => setStep("cart")} data-testid="checkout-back">
                 <ArrowLeft className="w-5 h-5" />
               </button>
             )}
-            {step === "cart" ? "Seu pedido" : "Finalizar pedido"}
+            {step === "cart" ? "Seu pedido" : step === "pix" ? "Pagar com Pix" : "Finalizar pedido"}
           </SheetTitle>
         </SheetHeader>
 
-        {items.length === 0 ? (
+        {step === "pix" && pixCharge ? (
+          /* ── Tela de pagamento Pix automático ── */
+          <div className="p-6 space-y-5 text-center">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <QrCode className="w-5 h-5 text-green-400"/>
+              <p className="text-sm text-green-400 font-semibold">Pix gerado com sucesso!</p>
+            </div>
+            <p className="text-xs text-gray-400">Escaneie o QR Code abaixo com seu app bancário ou copie o código Pix</p>
+
+            {/* QR Code image */}
+            {pixCharge.qr_code_image && (
+              <div className="flex justify-center">
+                <div className="bg-white rounded-2xl p-3 inline-block">
+                  <img
+                    src={`data:image/png;base64,${pixCharge.qr_code_image}`}
+                    alt="QR Code Pix"
+                    className="w-52 h-52 block"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Pix copia e cola */}
+            {pixCharge.br_code && (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Pix Copia e Cola</p>
+                <div className="flex gap-2">
+                  <input
+                    readOnly
+                    value={pixCharge.br_code}
+                    className="flex-1 text-xs bg-[#1A1A1A] border border-white/10 rounded-lg px-3 py-2 text-gray-300 truncate outline-none"
+                  />
+                  <button
+                    onClick={copyPixCode}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors"
+                    style={{background: copied ? "rgba(74,222,128,0.2)" : "rgba(212,175,55,0.15)", color: copied ? "#4ade80" : "#D4AF37", border: `1px solid ${copied ? "rgba(74,222,128,0.3)" : "rgba(212,175,55,0.3)"}`}}
+                  >
+                    <Copy className="w-3.5 h-3.5"/>
+                    {copied ? "Copiado!" : "Copiar"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-xl p-3 text-xs text-gray-400 space-y-1" style={{background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)"}}>
+              <p>⏱ O pagamento é confirmado automaticamente em até 1 minuto</p>
+              <p>📱 Abra seu banco → Pix → Ler QR Code ou Copia e Cola</p>
+            </div>
+
+            <button
+              onClick={closePix}
+              className="w-full rounded-xl h-11 text-sm font-semibold text-gray-300 border border-white/10 hover:border-white/20 transition-colors"
+            >
+              Fechar
+            </button>
+          </div>
+        ) : items.length === 0 ? (
           <div className="p-10 text-center text-gray-400">
             <ShoppingBag className="w-12 h-12 mx-auto mb-3 opacity-40" />
             <p>Seu carrinho está vazio.</p>
@@ -182,7 +271,7 @@ export default function CartSheet({ open, onOpenChange, restaurant, slug }) {
                 <div className="flex-1">
                   <p className="font-medium text-sm">{i.product.name}</p>
                   {i.selectedOptions.map((o, idx) => (
-                    <p key={idx} className="text-xs text-gray-400">+ {o.name}</p>
+                    <p key={idx} className="text-xs" style={{color:"#888"}}>+ {o.name}</p>
                   ))}
                   {i.notes && <p className="text-xs text-gray-400 italic">Obs: {i.notes}</p>}
                   <p className="text-sm font-semibold brand-text mt-1">{brl(i.unitPrice * i.quantity)}</p>
@@ -191,7 +280,7 @@ export default function CartSheet({ open, onOpenChange, restaurant, slug }) {
                   <button onClick={() => removeItem(i.lineId)} data-testid="cart-remove" className="text-gray-300 hover:text-red-500">
                     <Trash2 className="w-4 h-4" />
                   </button>
-                  <div className="flex items-center gap-2 border rounded-full px-1.5 py-0.5">
+                  <div className="flex items-center gap-2 rounded-full px-1.5 py-0.5" style={{border:"1px solid rgba(255,255,255,0.15)"}}>
                     <button onClick={() => updateQuantity(i.lineId, -1)} className="w-6 h-6 grid place-items-center"><Minus className="w-3 h-3" /></button>
                     <span className="text-sm w-4 text-center">{i.quantity}</span>
                     <button onClick={() => updateQuantity(i.lineId, 1)} className="w-6 h-6 grid place-items-center"><Plus className="w-3 h-3" /></button>
@@ -213,7 +302,7 @@ export default function CartSheet({ open, onOpenChange, restaurant, slug }) {
               <p className="text-xs text-green-600 flex items-center gap-1"><Check className="w-3 h-3" /> Cupom {coupon.code} aplicado</p>
             )}
 
-            <div className="border-t pt-3 space-y-1.5 text-sm">
+            <div className="pt-3 space-y-1.5 text-sm" style={{borderTop:"1px solid rgba(255,255,255,0.1)"}}>
               <div className="flex justify-between text-gray-500"><span>Subtotal</span><span>{brl(subtotal)}</span></div>
               {discount > 0 && <div className="flex justify-between text-green-600"><span>Desconto</span><span>-{brl(discount)}</span></div>}
               <div className="flex justify-between font-display font-bold text-base"><span>Total</span><span>{brl(subtotal - discount)}</span></div>
@@ -227,17 +316,17 @@ export default function CartSheet({ open, onOpenChange, restaurant, slug }) {
             <div className="grid grid-cols-2 gap-2">
               {restaurant?.accepts_delivery && (
                 <button onClick={() => setType("delivery")} data-testid="type-delivery"
-                  className={`py-2.5 rounded-xl border text-sm font-medium ${type === "delivery" ? "brand-bg border-transparent" : "border-gray-200"}`}>Entrega</button>
+                  className={`py-2.5 rounded-xl border text-sm font-medium transition-colors ${type === "delivery" ? "brand-bg border-transparent text-white" : "border-white/20 text-gray-300 hover:border-white/40"}`}>Entrega</button>
               )}
               {restaurant?.accepts_pickup && (
                 <button onClick={() => setType("pickup")} data-testid="type-pickup"
-                  className={`py-2.5 rounded-xl border text-sm font-medium ${type === "pickup" ? "brand-bg border-transparent" : "border-gray-200"}`}>Retirada</button>
+                  className={`py-2.5 rounded-xl border text-sm font-medium transition-colors ${type === "pickup" ? "brand-bg border-transparent text-white" : "border-white/20 text-gray-300 hover:border-white/40"}`}>Retirada</button>
               )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Nome</Label><Input value={name} onChange={(e) => setName(e.target.value)} data-testid="checkout-name" className="mt-1" /></div>
-              <div><Label>Telefone</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} data-testid="checkout-phone" className="mt-1" /></div>
+              <div><Label>Telefone</Label><Input value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} placeholder="(XX) XXXXX-XXXX" maxLength={15} data-testid="checkout-phone" className="mt-1" /></div>
             </div>
 
             {type === "delivery" && (
@@ -283,7 +372,7 @@ export default function CartSheet({ open, onOpenChange, restaurant, slug }) {
               <div><Label>Troco para</Label><Input type="number" value={changeFor} onChange={(e) => setChangeFor(e.target.value)} placeholder="Ex: 100" data-testid="checkout-change" className="mt-1" /></div>
             )}
             {payment === "Pix" && restaurant?.pix_key && (
-              <div className="text-xs bg-gray-50 border rounded-xl p-3">
+              <div className="text-xs rounded-xl p-3" style={{background:"#1A1A1A",border:"1px solid rgba(255,255,255,0.1)",color:"#ccc"}}>
                 <p className="font-semibold">Chave Pix: {restaurant.pix_key}</p>
                 <p className="text-gray-500">{restaurant.pix_name}</p>
               </div>
@@ -291,7 +380,7 @@ export default function CartSheet({ open, onOpenChange, restaurant, slug }) {
 
             <div><Label>Observação do pedido</Label><Textarea value={orderNotes} onChange={(e) => setOrderNotes(e.target.value)} rows={2} className="mt-1 resize-none" data-testid="checkout-notes" /></div>
 
-            <div className="border-t pt-3 space-y-1.5 text-sm">
+            <div className="pt-3 space-y-1.5 text-sm" style={{borderTop:"1px solid rgba(255,255,255,0.1)"}}>
               <div className="flex justify-between text-gray-500"><span>Subtotal</span><span>{brl(subtotal)}</span></div>
               {type === "delivery" && <div className="flex justify-between text-gray-500"><span>Entrega</span><span>{brl(deliveryFee)}</span></div>}
               {discount > 0 && <div className="flex justify-between text-green-600"><span>Desconto</span><span>-{brl(discount)}</span></div>}

@@ -14,7 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import ImageUpload from "@/components/admin/ImageUpload";
-import { Plus, Pencil, Trash2, UtensilsCrossed, X } from "lucide-react";
+import { Plus, Pencil, Trash2, UtensilsCrossed, X, Download, Upload } from "lucide-react";
 
 const EMPTY = {
   name: "", description: "", image_url: null, price: 0, promotional_price: null,
@@ -74,11 +74,43 @@ export default function Products() {
   const delOption = (gid, oid) => updGroupOptions(gid, (opts) => opts.filter((o) => o.id !== oid));
   const updGroupOptions = (gid, fn) => setForm((f) => ({ ...f, option_groups: f.option_groups.map((g) => g.id === gid ? { ...g, options: fn(g.options) } : g) }));
 
+
+  const exportExcel = async () => {
+    try {
+      const res = await api.get("/admin/products/export", { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a"); a.href = url; a.download = "produtos.xlsx"; a.click();
+      window.URL.revokeObjectURL(url);
+      toast.success("Exportado com sucesso!");
+    } catch { toast.error("Erro ao exportar"); }
+  };
+
+  const importExcel = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const fd = new FormData(); fd.append("file", file);
+    try {
+      const r = await api.post("/admin/products/import", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      toast.success(`Importados: ${r.data.imported}, Atualizados: ${r.data.updated}`);
+      load();
+    } catch { toast.error("Erro ao importar"); }
+    e.target.value = "";
+  };
+
   return (
     <div className="space-y-5" data-testid="admin-products">
-      <div className="flex items-center justify-between">
-        <h1 className="font-display font-bold text-2xl">Produtos</h1>
-        <Button onClick={openNew} data-testid="new-product-btn" className="bg-[#111827] rounded-xl"><Plus className="w-4 h-4 mr-1" /> Novo produto</Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display font-bold text-2xl dark:text-white">Produtos</h1>
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors">
+            <Upload className="w-4 h-4" /> Importar Excel
+            <input type="file" accept=".xlsx" className="hidden" onChange={importExcel} />
+          </label>
+          <Button variant="outline" onClick={exportExcel} className="dark:border-gray-700 dark:text-gray-300">
+            <Download className="w-4 h-4 mr-1.5" /> Exportar Excel
+          </Button>
+          <Button onClick={openNew} data-testid="new-product-btn" className="bg-[#111827] dark:bg-indigo-600 rounded-xl text-white"><Plus className="w-4 h-4 mr-1" /> Novo produto</Button>
+        </div>
       </div>
 
       {items.length === 0 ? (

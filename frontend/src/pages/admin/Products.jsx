@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import api from "@/lib/api";
+import api, { formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { brl } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -49,10 +49,21 @@ export default function Products() {
     setSaving(true);
     try {
       const payload = {
-        ...form,
+        name: form.name,
+        description: form.description || "",
+        image_url: form.image_url || null,
         price: Number(form.price) || 0,
         promotional_price: form.promotional_price ? Number(form.promotional_price) : null,
+        wholesale_price: form.wholesale_price ? Number(form.wholesale_price) : null,
+        category_id: form.category_id || null,
+        is_available: Boolean(form.is_available),
+        is_featured: Boolean(form.is_featured),
+        is_best_seller: Boolean(form.is_best_seller),
         sort_order: Number(form.sort_order) || 0,
+        option_groups: form.option_groups || [],
+        track_stock: Boolean(form.track_stock),
+        stock_quantity: Number(form.stock_quantity) || 0,
+        low_stock_threshold: Number(form.low_stock_threshold) || 5,
       };
       if (editId) await api.put(`/admin/products/${editId}`, payload);
       else await api.post("/admin/products", payload);
@@ -60,7 +71,7 @@ export default function Products() {
       setOpen(false);
       load();
     } catch (err) {
-      toast.error(err?.response?.data?.detail || "Erro ao salvar produto");
+      toast.error(formatApiError(err?.response?.data?.detail) || "Erro ao salvar produto");
     } finally {
       setSaving(false);
     }

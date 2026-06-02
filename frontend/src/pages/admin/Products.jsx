@@ -28,6 +28,7 @@ export default function Products() {
   const [items, setItems] = useState([]);
   const [cats, setCats] = useState([]);
   const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [editId, setEditId] = useState(null);
 
@@ -44,15 +45,25 @@ export default function Products() {
 
   const save = async () => {
     if (!form.name.trim()) return toast.error("Informe o nome do produto");
-    const payload = {
-      ...form,
-      price: Number(form.price) || 0,
-      promotional_price: form.promotional_price ? Number(form.promotional_price) : null,
-      sort_order: Number(form.sort_order) || 0,
-    };
-    if (editId) await api.put(`/admin/products/${editId}`, payload);
-    else await api.post("/admin/products", payload);
-    toast.success("Produto salvo"); setOpen(false); load();
+    if (!form.price && form.price !== 0) return toast.error("Informe o preço");
+    setSaving(true);
+    try {
+      const payload = {
+        ...form,
+        price: Number(form.price) || 0,
+        promotional_price: form.promotional_price ? Number(form.promotional_price) : null,
+        sort_order: Number(form.sort_order) || 0,
+      };
+      if (editId) await api.put(`/admin/products/${editId}`, payload);
+      else await api.post("/admin/products", payload);
+      toast.success("Produto salvo");
+      setOpen(false);
+      load();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Erro ao salvar produto");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const remove = async (id) => {
@@ -205,7 +216,7 @@ export default function Products() {
               </div>
             </div>
           </div>
-          <DialogFooter><Button onClick={save} data-testid="save-product" className="bg-[#111827] rounded-xl">Salvar produto</Button></DialogFooter>
+          <DialogFooter><Button onClick={save} disabled={saving} data-testid="save-product" className="rounded-xl">{saving ? "Salvando..." : "Salvar produto"}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { CartProvider, useCart } from "@/context/CartContext";
 import api, { API } from "@/lib/api";
@@ -8,7 +8,7 @@ import ProductDrawer from "@/components/public/ProductDrawer";
 import CartSheet from "@/components/public/CartSheet";
 import {
   MapPin, Clock, Share2, ShoppingBag, Search, Star, Phone,
-  Plus, Loader2, Store, CheckCircle2, Info, ChefHat,
+  Plus, Loader2, Store, CheckCircle2, Info, ChefHat, ClipboardList,
 } from "lucide-react";
 import axios from "axios";
 
@@ -141,6 +141,18 @@ function MenuContent({ data, slug }) {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Botão acompanhar pedido */}
+      <div className="px-4 mt-3">
+        <Link
+          to={`/meus-pedidos/${slug}`}
+          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-semibold transition-colors border border-white/10 hover:border-white/20"
+          style={{background:"rgba(255,255,255,0.05)", color:"rgba(255,255,255,0.75)"}}
+        >
+          <ClipboardList className="w-4 h-4"/>
+          Acompanhar meu pedido
+        </Link>
       </div>
 
       {/* Tabs */}

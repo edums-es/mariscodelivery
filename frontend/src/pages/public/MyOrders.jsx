@@ -6,7 +6,7 @@ import { brl } from "@/lib/format";
 import {
   Phone, Search, Clock, CheckCircle2, ChefHat, Package,
   Bike, Star, XCircle, Loader2, ChevronRight, Store,
-  ShoppingBag, RefreshCw,
+  ShoppingBag, RefreshCw, ArrowLeft,
 } from "lucide-react";
 
 const STATUS_LABEL = {
@@ -104,15 +104,23 @@ function OrderCard({ order, primary }) {
 export default function MyOrders() {
   const { slug } = useParams();
   const [searchParams] = useSearchParams();
-  const [phone, setPhone] = useState(searchParams.get("phone") || "");
   const [inputPhone, setInputPhone] = useState(maskPhone(searchParams.get("phone") || ""));
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
+  const [restaurant, setRestaurant] = useState(null);
   const inputRef = useRef(null);
 
-  const primary = "#EF4444"; // fallback; será substituído pelo primary do restaurante se tiver
+  const primary = restaurant?.primary_color || "#EF4444";
+
+  // Carrega dados do restaurante quando vem por slug
+  useEffect(() => {
+    if (!slug) return;
+    axios.get(`${API}/public/restaurants/${slug}`)
+      .then(({ data }) => setRestaurant(data.restaurant))
+      .catch(() => {});
+  }, [slug]);
 
   const search = async (rawPhone) => {
     const clean = rawPhone.replace(/\D/g, "");
@@ -142,7 +150,7 @@ export default function MyOrders() {
     if (urlPhone && urlPhone.replace(/\D/g, "").length >= 8) {
       search(urlPhone);
     }
-  }, []);
+  }, []);  // eslint-disable-line
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -157,13 +165,29 @@ export default function MyOrders() {
       {/* Header */}
       <div className="bg-white border-b border-gray-100 px-4 pt-10 pb-6">
         <div className="max-w-md mx-auto text-center">
-          <div className="w-14 h-14 rounded-2xl bg-red-50 mx-auto mb-3 grid place-items-center">
-            <ShoppingBag className="w-7 h-7 text-red-500" />
-          </div>
-          <h1 className="font-display font-bold text-2xl text-gray-800">Meus Pedidos</h1>
+          {/* Logo do restaurante ou ícone genérico */}
+          {restaurant?.logo_url
+            ? <img src={restaurant.logo_url} alt={restaurant.name}
+                className="w-14 h-14 rounded-2xl object-cover mx-auto mb-3 border border-gray-100 shadow-sm" />
+            : (
+              <div className="w-14 h-14 rounded-2xl mx-auto mb-3 grid place-items-center"
+                style={{ background: `${primary}15` }}>
+                <ShoppingBag className="w-7 h-7" style={{ color: primary }} />
+              </div>
+            )
+          }
+          <h1 className="font-display font-bold text-2xl text-gray-800">
+            {restaurant?.name ? `Pedidos · ${restaurant.name}` : "Meus Pedidos"}
+          </h1>
           <p className="text-sm text-gray-400 mt-1">
             Digite seu telefone para ver seus pedidos
           </p>
+          {slug && (
+            <Link to={`/loja/${slug}`}
+              className="inline-flex items-center gap-1.5 mt-3 text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors">
+              <ArrowLeft className="w-3.5 h-3.5" /> Voltar ao cardápio
+            </Link>
+          )}
         </div>
       </div>
 

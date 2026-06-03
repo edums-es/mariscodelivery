@@ -1,6 +1,7 @@
 """
 WhatsApp multi-provider: Evolution API ou Kirago.
 Super Admin escolhe em platform_settings.wa_provider.
+URL e Key do Evolution sao lidas do banco (painel super) com fallback para env.
 """
 import os
 import re
@@ -8,7 +9,6 @@ import logging
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import Optional
 
 from auth import require_restaurant
 from db import db
@@ -19,27 +19,36 @@ router = APIRouter(prefix="/api/admin/whatsapp", tags=["whatsapp"])
 
 TIMEOUT = 15
 
-async def _get_provider():
+
+async def _get_platform(key, fallback=""):
+    """Le configuracao do banco (super admin) com fallback para env var."""
     from routes_superadmin import get_platform_setting
-    return (await get_platform_setting("wa_provider", "evolution")).lower()
+    return await get_platform_setting(key, os.environ.get(key.upper(), fallback))
 
-def _evo_url():
-    return os.environ.get("EVOLUTION_API_URL", "http://evolution-api:8080")
 
-def _evo_key():
-    return os.environ.get("EVOLUTION_API_KEY", "menudigital_evo_key")
+async def _get_provider():
+    return (await _get_platform("wa_provider", "evolution")).lower()
 
-def _evo_headers():
-    return {"apikey": _evo_key(), "Content-Type": "application/json"}
+
+async def _evo_url():
+    return (await _get_platform("evolution_api_url", "http://evolution-api:8080")).rstrip("/")
+
+
+async def _evo_key():
+    return await _get_platform("evolution_api_key", os.environ.get("EVOLUTION_API_KEY", "menudigital_evo_key"))
+
 
 def _instance(restaurant_id):
     return re.sub(r"[^a-zA-Z0-9_]", "", restaurant_id)[:32]
 
+
 def _kira_headers(token):
     return {"token": token, "Content-Type": "application/json"}
 
+
 def rid(user):
     return user["restaurant_id"]
+
 
 async def _get_kira_token(restaurant_id):
     r = await db.restaurants.find_one({"id": restaurant_id}, {"kirago_token": 1, "_id": 0})
@@ -47,16 +56,19 @@ async def _get_kira_token(restaurant_id):
 
 
 async def _evo(method, path, **kwargs):
+    url = await _evo_url()
+    key = await _evo_key()
+    headers = {"apikey": key, "Content-Type": "application/json"}
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
             resp = await getattr(client, method)(
-                f"{_evo_url()}{path}", headers=_evo_headers(), **kwargs
+                f"{url}{path}", headers=headers, **kwargs
             )
             return resp.status_code, resp.json() if resp.content else {}
     except httpx.ConnectError:
-        raise HTTPException(503, "Evolution API indisponivel. Verifique o container.")
+        raise HTTPException(503, f"Evolution API indisponivel em {url}. Verifique a URL e o container.")
     except httpx.TimeoutException:
-        raise HTTPException(504, "Timeout Evolution API.")
+        raise HTTPException(504, "Timeout ao conectar ao Evolution API.")
     except Exception as e:
         raise HTTPException(500, f"Erro Evolution API: {str(e)}")
 
@@ -65,7 +77,9 @@ async def _kira(method, path, token, **kwargs):
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
             resp = await getattr(client, method)(
-                f"https://kirago.com.br{path}", headers=_kira_headers(token), **kwargs
+                f"https://kirago.com.br{path}",
+                headers={"token": token, "Content-Type": "application/json"},
+                **kwargs
             )
             return resp.status_code, resp.json() if resp.content else {}
     except httpx.ConnectError:

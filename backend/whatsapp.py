@@ -1,6 +1,6 @@
 """
 WhatsApp multi-provider: Evolution API (self-hosted) ou Kirago (SaaS).
-O provider e escolhido pelo Super Admin em platform_settings.wa_provider.
+URLs e keys lidas do banco (painel super admin) com fallback para env.
 """
 import os
 import re
@@ -18,35 +18,40 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
 
 
-def _evo_url():
-    return os.environ.get("EVOLUTION_API_URL", "http://evolution-api:8080")
-
-def _evo_key():
-    return os.environ.get("EVOLUTION_API_KEY", "menudigital_evo_key")
-
 def _instance_name(restaurant_id):
     return re.sub(r"[^a-zA-Z0-9_]", "", restaurant_id)[:32]
 
+
 def _brl(value):
     return "R$ {:,.2f}".format(float(value)).replace(",","X").replace(".",",").replace("X",".")
+
 
 def _normalize(text):
     nfkd = unicodedata.normalize("NFD", text.lower())
     return re.sub(r"[^\w\s]", "", "".join(c for c in nfkd if not unicodedata.combining(c)))
 
 
+async def _platform(key, fallback=""):
+    """Le config do super admin com fallback para env var."""
+    from routes_superadmin import get_platform_setting
+    return await get_platform_setting(key, os.environ.get(key.upper(), fallback))
+
+
 async def _send_via_evolution(restaurant_id, phone, message):
     instance = _instance_name(restaurant_id)
+    evo_url = (await _platform("evolution_api_url", "http://evolution-api:8080")).rstrip("/")
+    evo_key = await _platform("evolution_api_key", os.environ.get("EVOLUTION_API_KEY", "menudigital_evo_key"))
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
-                f"{_evo_url()}/message/sendText/{instance}",
-                headers={"apikey": _evo_key(), "Content-Type": "application/json"},
+                f"{evo_url}/message/sendText/{instance}",
+                headers={"apikey": evo_key, "Content-Type": "application/json"},
                 json={"number": phone, "text": message},
             )
             if resp.status_code in (200, 201):
                 logger.info(f"[WA/Evo] Enviado para {phone}")
                 return True
+            logger.warning(f"[WA/Evo] {resp.status_code}: {resp.text[:100]}")
     except Exception as e:
         logger.error(f"[WA/Evo] Erro: {e}")
     return False
@@ -63,22 +68,27 @@ async def _send_via_kirago(kirago_token, phone, message):
             if resp.status_code in (200, 201):
                 logger.info(f"[WA/Kira] Enviado para {phone}")
                 return True
+            logger.warning(f"[WA/Kira] {resp.status_code}: {resp.text[:100]}")
     except Exception as e:
         logger.error(f"[WA/Kira] Erro: {e}")
     return False
 
 
 async def send_whatsapp(restaurant, to_phone, message):
+    """Envia WhatsApp usando o provider configurado no painel super admin."""
     raw = re.sub(r"\D", "", to_phone)
     if not raw.startswith("55"):
         raw = "55" + raw
-    from routes_superadmin import get_platform_setting
-    provider = (await get_platform_setting("wa_provider", "evolution")).lower()
+
+    provider = (await _platform("wa_provider", "evolution")).lower()
+
     if provider == "kirago":
         token = restaurant.get("kirago_token", "")
         if not token:
+            logger.warning(f"[WA/Kira] restaurante {restaurant.get('id')} sem token Kirago")
             return False
         return await _send_via_kirago(token, raw, message)
+
     return await _send_via_evolution(restaurant["id"], raw, message)
 
 
@@ -165,8 +175,9 @@ async def whatsapp_webhook(restaurant_id, request: Request):
 
 def _chatbot(text, restaurant):
     q = _normalize(text)
+    name = restaurant.get("name", "")
     if re.search(r"\b(oi|ola|bom dia|boa tarde|boa noite|hello|ei)\b", q):
-        return f"Ola! Bem-vindo ao {restaurant.get('name', '')}!\nComo posso te ajudar?\nendereco | horario | entrega | pagamento | cardapio"
+        return f"Ola! Bem-vindo ao {name}!\nComo posso te ajudar?\nendereco | horario | entrega | pagamento | cardapio"
     if re.search(r"\b(enderec|onde|fica|bairro|rua)\b", q):
         parts = [p for p in [restaurant.get("address"), restaurant.get("neighborhood"),
                               restaurant.get("city"), restaurant.get("state")] if p]
@@ -182,7 +193,7 @@ def _chatbot(text, restaurant):
         parts = []
         if fee is not None: parts.append("Taxa: " + ("gratis!" if fee == 0 else _brl(fee)))
         if eta: parts.append("Tempo: " + str(eta))
-        return "Entrega:\n" + "\n".join(parts) if parts else "Consulte a taxa de entrega."
+        return "Entrega:\n" + "\n".join(parts) if parts else "Consulte a taxa."
     if re.search(r"\b(pagamento|pix|cartao|dinheiro)\b", q):
         methods = restaurant.get("payment_methods") or ["Pix, Cartao, Dinheiro"]
         out = "Pagamento:\n" + "\n".join("- " + m for m in methods)

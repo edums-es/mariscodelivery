@@ -85,6 +85,11 @@ function OrderCard({ order, onSelect, onStatusChange }) {
       <div className="flex items-center gap-1.5 mb-1">
         <User className="w-3.5 h-3.5 text-gray-400 shrink-0" />
         <span className="text-sm font-medium truncate">{order.customer?.name || "—"}</span>
+        {order.payment_status === "awaiting" && (
+          <span className="ml-auto shrink-0 text-xs font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+            Aguardando Pix
+          </span>
+        )}
       </div>
 
       {/* Type + total */}

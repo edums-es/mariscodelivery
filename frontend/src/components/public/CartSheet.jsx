@@ -255,25 +255,24 @@ export default function CartSheet({ open, onOpenChange, restaurant, slug }) {
             )}
             {!pixPaid && <p className="text-xs text-gray-400">Escaneie o QR Code abaixo com seu app bancário ou copie o código Pix</p>}
 
-            {/* QR Code image */}
-            {pixCharge.qr_code_image && (
-              <div className="flex justify-center">
-                <div className="bg-white rounded-2xl p-3 inline-block">
-                  <img
-                    src={
-                      pixCharge.qr_code_image.startsWith("data:")
-                        ? pixCharge.qr_code_image
-                        : `data:image/png;base64,${pixCharge.qr_code_image}`
-                    }
-                    alt="QR Code Pix"
-                    className="w-52 h-52 block"
-                  />
+            {/* QR Code image — usa base64 da API ou gera do brCode */}
+            {!pixPaid && pixCharge.br_code && (() => {
+              const src = pixCharge.qr_code_image
+                ? (pixCharge.qr_code_image.startsWith("data:") || pixCharge.qr_code_image.startsWith("http")
+                    ? pixCharge.qr_code_image
+                    : `data:image/png;base64,${pixCharge.qr_code_image}`)
+                : `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pixCharge.br_code)}`;
+              return (
+                <div className="flex justify-center">
+                  <div className="bg-white rounded-2xl p-3 inline-block">
+                    <img src={src} alt="QR Code Pix" className="w-52 h-52 block" />
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
-            {/* Pix copia e cola */}
-            {pixCharge.br_code && (
+            {/* Pix copia e cola — só antes de pagar */}
+            {!pixPaid && pixCharge.br_code && (
               <div className="space-y-2">
                 <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Pix Copia e Cola</p>
                 <div className="flex gap-2">
@@ -294,13 +293,16 @@ export default function CartSheet({ open, onOpenChange, restaurant, slug }) {
               </div>
             )}
 
-            <div className="rounded-xl p-3 text-xs text-gray-400 space-y-1" style={{background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)"}}>
-              <p>⏱ O pagamento é confirmado automaticamente em até 1 minuto</p>
-              <p>📱 Abra seu banco → Pix → Ler QR Code ou Copia e Cola</p>
-            </div>
+            {!pixPaid && (
+              <div className="rounded-xl p-3 text-xs text-gray-400 space-y-1" style={{background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)"}}>
+                <p>⏱ O pagamento é confirmado automaticamente em até 1 minuto</p>
+                <p>📱 Abra seu banco → Pix → Ler QR Code ou Copia e Cola</p>
+              </div>
+            )}
 
             <div className="space-y-2">
-              {restaurant?.whatsapp && (
+              {/* Avisar WhatsApp só aparece APÓS o pagamento ser confirmado */}
+              {pixPaid && restaurant?.whatsapp && (
                 <button
                   onClick={() => {
                     const msg = buildWhatsappMessage(lastOrderNumber, true);

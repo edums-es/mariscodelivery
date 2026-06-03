@@ -102,38 +102,70 @@ def brl_fmt(value):
         return "R$ 0,00"
 
 
-async def _notify_new_order(restaurant: dict, order: dict, order_in, pix_via_openpix: bool = False):
+async def _notify_new_order(restaurant: dict, order: dict, order_in=None, pix_via_openpix: bool = False, order_number: int = None):
+    """Envia WhatsApp ao dono quando novo pedido chega (ou e pago via Pix)."""
     try:
         from datetime import timedelta
         owner_phone = restaurant.get("whatsapp") or restaurant.get("phone")
         if not owner_phone:
             return
+
         br_tz = timezone(timedelta(hours=-3))
         dt_str = datetime.now(br_tz).strftime("%d/%m/%Y %H:%M")
-        items_lines = []
-        for it in order_in.items:
-            items_lines.append(f"  {it.quantity}x {it.product_name} - {brl_fmt(it.total_price)}")
-            for op in (it.options or []):
-                items_lines.append(f"    + {op.name}")
-        items_text = "\n".join(items_lines)
-        delivery_type = "Entrega" if order_in.type == "delivery" else "Retirada"
-        address_lines = []
-        if order_in.address and order_in.type == "delivery":
-            a = order_in.address
-            line = f"  {a.street}, {a.number}"
-            if a.complement:
-                line += f" ({a.complement})"
-            address_lines.append(line)
-            if a.neighborhood:
-                address_lines.append(f"  {a.neighborhood} - {getattr(a, 'city', '')} {getattr(a, 'state', '')}")
-        address_text = ("\n*Endereco:*\n" + "\n".join(address_lines)) if address_lines else ""
-        pm = (order_in.payment_method or "").strip()
+        num = order_number or order.get("order_number", "?")
+
+        if order_in:
+            items_lines = []
+            for it in order_in.items:
+                items_lines.append(f"  {it.quantity}x {it.product_name} - {brl_fmt(it.total_price)}")
+                for op in (it.options or []):
+                    items_lines.append(f"    + {op.name}")
+            items_text = "\n".join(items_lines)
+            delivery_type = "Entrega" if order_in.type == "delivery" else "Retirada"
+            address_lines = []
+            if order_in.address and order_in.type == "delivery":
+                a = order_in.address
+                ln = f"  {a.street}, {a.number}"
+                if a.complement:
+                    ln += f" ({a.complement})"
+                address_lines.append(ln)
+                if a.neighborhood:
+                    address_lines.append(f"  {a.neighborhood} - {getattr(a,'city','')} {getattr(a,'state','')}")
+            address_text = ("\n*Endereco:*\n" + "\n".join(address_lines)) if address_lines else ""
+            pm = (order_in.payment_method or "").strip()
+            subtotal = order_in.subtotal
+            delivery_fee = order_in.delivery_fee
+            total = order_in.total
+            customer_name = order_in.customer.name
+            customer_phone = order_in.customer.phone
+        else:
+            # Chamado do webhook: reconstroi a partir do doc salvo
+            items = order.get("items", [])
+            items_lines = [f"  {it.get('quantity')}x {it.get('product_name')} - {brl_fmt(it.get('total_price',0))}" for it in items]
+            items_text = "\n".join(items_lines)
+            delivery_type = "Entrega" if order.get("type") == "delivery" else "Retirada"
+            addr = order.get("address") or {}
+            if addr and order.get("type") == "delivery":
+                ln = f"  {addr.get('street','')}, {addr.get('number','')}"
+                if addr.get("complement"): ln += f" ({addr['complement']})"
+                address_text = f"\n*Endereco:*\n{ln}"
+                if addr.get("neighborhood"): address_text += f"\n  {addr['neighborhood']}"
+            else:
+                address_text = ""
+            pm = order.get("payment_method", "")
+            subtotal = order.get("subtotal", 0)
+            delivery_fee = order.get("delivery_fee", 0)
+            total = order.get("total", 0)
+            cust = order.get("customer") or {}
+            customer_name = cust.get("name", "")
+            customer_phone = cust.get("phone", "")
+
         pm_lower = pm.lower()
         if "pix" in pm_lower:
             payment_label = "Pix pago automatico Openpix" if pix_via_openpix else "Pix aguardando comprovante"
         elif pm_lower == "dinheiro":
             payment_label = "Dinheiro"
-        elif "credito" in pm_lower or "credito" in pm_lower:
+        elif "credito" in pm_lower:
             payment_label = "Cartao de credito"
         elif "debito" in pm_lower:
             payment_label = "Cartao de debito"
@@ -141,21 +173,22 @@ async def _notify_new_order(restaurant: dict, order: dict, order_in, pix_via_ope
             payment_label = "Vale refeicao"
         else:
             payment_label = pm
+
         sep = "--------------------"
         msg = (
-            f"*NOVO PEDIDO #{order['order_number']}*\n"
+            f"*NOVO PEDIDO #{num}*\n"
             f"Data: {dt_str}\n"
             f"{sep}\n"
-            f"*Cliente:* {order_in.customer.name}\n"
-            f"*Telefone:* {order_in.customer.phone}\n"
+            f"*Cliente:* {customer_name}\n"
+            f"*Telefone:* {customer_phone}\n"
             f"*Tipo:* {delivery_type}"
             f"{address_text}\n"
             f"{sep}\n"
             f"*Itens:*\n{items_text}\n"
             f"{sep}\n"
-            f"Subtotal: {brl_fmt(order_in.subtotal)}\n"
-            f"Entrega: {brl_fmt(order_in.delivery_fee)}\n"
-            f"*TOTAL: {brl_fmt(order_in.total)}*\n"
+            f"Subtotal: {brl_fmt(subtotal)}\n"
+            f"Entrega: {brl_fmt(delivery_fee)}\n"
+            f"*TOTAL: {brl_fmt(total)}*\n"
             f"*Pagamento:* {payment_label}\n"
             f"{sep}"
         )
@@ -213,8 +246,6 @@ async def create_order(slug: str, order: OrderIn):
     await db.orders.insert_one(doc)
 
     import asyncio
-    asyncio.create_task(ws_broadcast(r["id"], "new_order", {"order_number": order_number, "id": doc["id"]}))
-    asyncio.create_task(_push_onesignal(r["id"], order_number, f"Novo pedido #{order_number}!"))
 
     if order.coupon_code:
         await db.coupons.update_one(
@@ -247,9 +278,12 @@ async def create_order(slug: str, order: OrderIn):
                     "created_at": now_iso(),
                 })
 
+    # ── Tenta gerar cobrança OpenPix ─────────────────────────────────────────
     pix_charge = None
     openpix_app_id = (r.get("openpix_app_id") or "").strip()
-    if openpix_app_id and "pix" in order.payment_method.lower():
+    is_pix_auto = openpix_app_id and "pix" in order.payment_method.lower()
+
+    if is_pix_auto:
         try:
             import httpx as _httpx
             async with _httpx.AsyncClient(timeout=15) as client:
@@ -266,7 +300,7 @@ async def create_order(slug: str, order: OrderIn):
                         },
                     },
                 )
-            logger.info(f"[OpenPix] status={resp.status_code} pedido={doc['id']} body={resp.text[:200]}")
+            logger.info(f"[OpenPix] status={resp.status_code} body={resp.text[:300]}")
             if resp.status_code in (200, 201):
                 body = resp.json()
                 charge = body.get("charge") or body
@@ -274,7 +308,7 @@ async def create_order(slug: str, order: OrderIn):
                 if qr_img.startswith("data:"):
                     qr_img = qr_img.split(",", 1)[-1]
                 br_code = charge.get("brCode") or charge.get("brcode") or ""
-                if br_code or qr_img:
+                if br_code:
                     pix_charge = {
                         "qr_code_image": qr_img,
                         "br_code": br_code,
@@ -290,7 +324,15 @@ async def create_order(slug: str, order: OrderIn):
         except Exception as _e:
             logger.error(f"[OpenPix] excecao: {_e}", exc_info=True)
 
-    asyncio.create_task(_notify_new_order(r, clean(doc), order, pix_via_openpix=bool(pix_charge)))
+    if is_pix_auto and pix_charge:
+        # Pix automático: aguarda confirmação do webhook para notificar restaurante
+        # Apenas sinaliza que o pedido existe (sem notificar ainda)
+        logger.info(f"[OpenPix] Pedido {doc['id']} aguardando pagamento — restaurante sera notificado apos confirmacao")
+    else:
+        # Pagamento manual (dinheiro, cartao, pix manual): notifica imediatamente
+        asyncio.create_task(ws_broadcast(r["id"], "new_order", {"order_number": order_number, "id": doc["id"]}))
+        asyncio.create_task(_push_onesignal(r["id"], order_number, f"Novo pedido #{order_number}!"))
+        asyncio.create_task(_notify_new_order(r, clean(doc), order, pix_via_openpix=False))
 
     result = clean(doc)
     if pix_charge:
@@ -300,41 +342,57 @@ async def create_order(slug: str, order: OrderIn):
 
 @router.post("/openpix/webhook")
 async def openpix_webhook(request: Request):
-    """Webhook chamado pela OpenPix/Woovi quando um Pix e pago."""
+    """Webhook da OpenPix/Woovi — chamado quando Pix e pago."""
     try:
         payload = await request.json()
     except Exception:
         return JSONResponse({"ok": False}, status_code=400)
 
     event = payload.get("event", "")
-    logger.info(f"[OpenPix Webhook] event={event}")
+    logger.info(f"[OpenPix Webhook] event={event} payload_keys={list(payload.keys())}")
 
-    if event in ("OPENPIX:CHARGE_COMPLETED", "OPENPIX:TRANSACTION_CONFIRMED"):
-        charge = payload.get("charge") or payload.get("transaction") or {}
-        correlation_id = charge.get("correlationID") or charge.get("correlationId") or ""
-        if correlation_id:
-            order = await db.orders.find_one({"id": correlation_id}, {"_id": 0})
-            if order:
-                await db.orders.update_one(
-                    {"id": correlation_id},
-                    {"$set": {"payment_status": "paid", "updated_at": now_iso()}},
-                )
-                logger.info(f"[OpenPix Webhook] pedido {correlation_id} marcado como pago")
-                await ws_broadcast(
-                    order["restaurant_id"],
-                    "order_updated",
-                    {"id": order["id"], "status": order["status"], "payment_status": "paid"},
-                )
-                # Aceita o pedido automaticamente se ainda estiver pendente
-                if order.get("status") == "pending":
-                    await db.orders.update_one(
-                        {"id": correlation_id},
-                        {"$set": {"status": "accepted", "updated_at": now_iso()}},
-                    )
-                    from whatsapp import notify_order_status
-                    updated = await db.orders.find_one({"id": correlation_id}, {"_id": 0})
-                    if updated:
-                        await notify_order_status(updated, "accepted")
+    if event not in ("OPENPIX:CHARGE_COMPLETED", "OPENPIX:TRANSACTION_CONFIRMED", "charge:completed"):
+        return JSONResponse({"ok": True})
+
+    charge = payload.get("charge") or payload.get("transaction") or {}
+    correlation_id = charge.get("correlationID") or charge.get("correlationId") or ""
+
+    if not correlation_id:
+        logger.warning(f"[OpenPix Webhook] sem correlationID no payload: {payload}")
+        return JSONResponse({"ok": True})
+
+    order = await db.orders.find_one({"id": correlation_id}, {"_id": 0})
+    if not order:
+        logger.warning(f"[OpenPix Webhook] pedido nao encontrado: {correlation_id}")
+        return JSONResponse({"ok": True})
+
+    if order.get("payment_status") == "paid":
+        return JSONResponse({"ok": True})  # Idempotente
+
+    # Marca como pago e aceito
+    await db.orders.update_one(
+        {"id": correlation_id},
+        {"$set": {"payment_status": "paid", "status": "accepted", "updated_at": now_iso()}},
+    )
+    logger.info(f"[OpenPix Webhook] pedido {correlation_id} PAGO — notificando restaurante")
+
+    restaurant = await db.restaurants.find_one({"id": order["restaurant_id"]}, {"_id": 0})
+    order_number = order.get("order_number", "?")
+
+    # Agora sim notifica o restaurante (pedido confirmado e pago)
+    import asyncio
+    asyncio.create_task(ws_broadcast(
+        order["restaurant_id"], "new_order",
+        {"order_number": order_number, "id": order["id"], "payment_status": "paid"},
+    ))
+    asyncio.create_task(_push_onesignal(order["restaurant_id"], order_number, f"Pix confirmado! Pedido #{order_number}"))
+
+    if restaurant:
+        updated_order = await db.orders.find_one({"id": correlation_id}, {"_id": 0})
+        asyncio.create_task(_notify_new_order(restaurant, updated_order, pix_via_openpix=True, order_number=order_number))
+        # Notifica cliente via WhatsApp que pedido foi aceito
+        from whatsapp import notify_order_status
+        asyncio.create_task(notify_order_status(updated_order, "accepted"))
 
     return JSONResponse({"ok": True})
 

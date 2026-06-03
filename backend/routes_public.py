@@ -516,8 +516,11 @@ async def track_by_phone(phone: str, slug: str = None):
     raw = _re.sub(r"\D", "", phone)
     if not raw:
         raise HTTPException(400, "Telefone invalido")
+    # Usa os ultimos 8 digitos mas com regex que tolera formatacao
+    # Ex: busca "96717081" mas o banco tem "(27) 99671-7081" com traço e espacos
     suffix = raw[-8:]
-    query = {"customer.phone": {"$regex": suffix}}
+    digit_pattern = "[^0-9]*".join(list(suffix))
+    query = {"customer.phone": {"$regex": digit_pattern}}
     if slug:
         r = await db.restaurants.find_one({"slug": slug}, {"id": 1, "_id": 0})
         if r:

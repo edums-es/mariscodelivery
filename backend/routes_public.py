@@ -309,8 +309,74 @@ async def create_order(slug: str, order: OrderIn):
 async def track_order(order_id: str):
     o = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not o:
-        raise HTTPException(status_code=404, detail="Pedido não encontrado")
-    return {"id": o["id"], "order_number": o["order_number"], "status": o["status"]}
+        raise HTTPException(status_code=404, detail="Pedido nao encontrado")
+    r = await db.restaurants.find_one(
+        {"id": o["restaurant_id"]},
+        {"name": 1, "slug": 1, "logo_url": 1, "primary_color": 1, "phone": 1, "whatsapp": 1, "_id": 0},
+    )
+    customer = o.get("customer") or {}
+    return {
+        "id": o["id"],
+        "order_number": o["order_number"],
+        "status": o["status"],
+        "created_at": o.get("created_at"),
+        "updated_at": o.get("updated_at"),
+        "customer": customer,
+        "customer_name": customer.get("name", ""),
+        "items": o.get("items", []),
+        "subtotal": o.get("subtotal", 0),
+        "delivery_fee": o.get("delivery_fee", 0),
+        "discount": o.get("discount", 0),
+        "total": o.get("total", 0),
+        "type": o.get("type", "delivery"),
+        "address": o.get("address"),
+        "payment_method": o.get("payment_method"),
+        "customer_notes": o.get("customer_notes"),
+        "restaurant": {
+            "name": r.get("name", "") if r else "",
+            "slug": r.get("slug", "") if r else "",
+            "logo_url": r.get("logo_url") if r else None,
+            "primary_color": r.get("primary_color", "#EF4444") if r else "#EF4444",
+            "phone": r.get("phone") if r else None,
+            "whatsapp": r.get("whatsapp") if r else None,
+        },
+    }
+
+
+@router.get("/track")
+async def track_by_phone(phone: str, slug: str = None):
+    """Retorna pedidos recentes de um cliente pelo telefone."""
+    import re as _re
+    raw = _re.sub(r"\D", "", phone)
+    if not raw:
+        raise HTTPException(400, "Telefone invalido")
+    # Busca pelos ultimos 8 digitos (sem DDD pais)
+    suffix = raw[-8:]
+
+    query = {"customer.phone": {"$regex": suffix}}
+    if slug:
+        r = await db.restaurants.find_one({"slug": slug}, {"id": 1, "_id": 0})
+        if r:
+            query["restaurant_id"] = r["id"]
+
+    orders = await db.orders.find(query, {"_id": 0}).sort("created_at", -1).to_list(20)
+
+    result = []
+    for o in orders:
+        r = await db.restaurants.find_one({"id": o["restaurant_id"]}, {"name": 1, "slug": 1, "_id": 0})
+        result.append({
+            "id": o["id"],
+            "order_number": o["order_number"],
+            "status": o["status"],
+            "created_at": o.get("created_at"),
+            "total": o.get("total", 0),
+            "type": o.get("type", "delivery"),
+            "items": o.get("items", []),
+            "restaurant_name": r["name"] if r else "",
+            "restaurant_slug": r["slug"] if r else "",
+            "payment_method": o.get("payment_method", ""),
+        })
+    return result
 
 
 @router.post("/restaurants/{slug}/reviews")

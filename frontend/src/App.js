@@ -7,6 +7,7 @@ import Landing from "@/pages/Landing";
 import LoginPage from "@/pages/LoginPage";
 import MenuPage from "@/pages/public/MenuPage";
 import TrackOrder from "@/pages/public/TrackOrder";
+import MyOrders from "@/pages/public/MyOrders";
 import AdminLayout from "@/components/admin/AdminLayout";
 import Dashboard from "@/pages/admin/Dashboard";
 import Orders from "@/pages/admin/Orders";
@@ -56,6 +57,8 @@ function App() {
             <Route path="/login" element={<ForceLightMode><LoginPage /></ForceLightMode>} />
             <Route path="/loja/:slug" element={<ForceLightMode><MenuPage /></ForceLightMode>} />
             <Route path="/pedido/:order_id" element={<ForceLightMode><TrackOrder /></ForceLightMode>} />
+            <Route path="/meus-pedidos" element={<ForceLightMode><MyOrders /></ForceLightMode>} />
+            <Route path="/meus-pedidos/:slug" element={<ForceLightMode><MyOrders /></ForceLightMode>} />
 
             <Route path="/supermaster" element={<Protected roles={["owner","manager","attendant","kitchen"]}><AdminLayout /></Protected>}>
               <Route index element={<Dashboard />} />

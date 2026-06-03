@@ -32,7 +32,7 @@ export default function TrackOrder() {
 
   const load = async () => {
     try {
-      const { data } = await axios.get(`${API}/public/track/${order_id}`);
+      const { data } = await axios.get(`${API}/public/orders/${order_id}`);
       setOrder(data);
     } catch {
       setError(true);

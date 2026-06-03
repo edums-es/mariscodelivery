@@ -93,12 +93,38 @@ async def send_whatsapp(restaurant, to_phone, message):
 
 
 STATUS_MESSAGES = {
-    "accepted": "Pedido #{number} confirmado!\n\nOla, {name}! Seu pedido foi aceito.\n\nAcompanhe: {tracking_url}",
-    "preparing": "Pedido #{number} em preparo!\n\nOla, {name}! Sua comida ja esta sendo preparada.",
-    "ready": "Pedido #{number} pronto!\n\nOla, {name}! Seu pedido esta pronto!",
-    "out_for_delivery": "Pedido #{number} saiu para entrega!\n\nOla, {name}! Seu pedido esta a caminho.",
-    "completed": "Pedido #{number} entregue!\n\nOla, {name}! Obrigado por pedir no {restaurant}!",
-    "cancelled": "Pedido #{number} cancelado.\n\nOla, {name}. Pedido cancelado. Entre em contato conosco.",
+    "accepted": (
+        "\u2705 *Pedido #{number} confirmado!*\n\n"
+        "Ol\u00e1, *{name}*! \ud83c\udf89 Seu pedido foi aceito e j\u00e1 est\u00e1 sendo preparado com muito carinho.\n\n"
+        "\ud83d\udcf2 Acompanhe o status em tempo real:\n{tracking_url}"
+    ),
+    "preparing": (
+        "\ud83d\udc68\u200d\ud83c\udf73 *Pedido #{number} em preparo!*\n\n"
+        "Ol\u00e1, *{name}*! Nossa equipe est\u00e1 com a m\u00e3o na massa preparando o seu pedido agora. \ud83d\udd25\n\n"
+        "\ud83d\udcf2 Acompanhe aqui:\n{tracking_url}"
+    ),
+    "ready": (
+        "\ud83c\udf89 *Pedido #{number} pronto!*\n\n"
+        "Ol\u00e1, *{name}*! Seu pedido ficou prontinho e est\u00e1 quentinho esperando por voc\u00ea! \ud83d\ude0b\n\n"
+        "\ud83d\udcf2 Acompanhe:\n{tracking_url}"
+    ),
+    "out_for_delivery": (
+        "\ud83d\udef5 *Pedido #{number} saiu para entrega!*\n\n"
+        "Ol\u00e1, *{name}*! Seu pedido est\u00e1 a caminho! \ud83c\udfe0\n"
+        "Em breve chegar\u00e1 at\u00e9 voc\u00ea. Fique de olho!\n\n"
+        "\ud83d\udcf2 Acompanhe em tempo real:\n{tracking_url}"
+    ),
+    "completed": (
+        "\u2b50 *Pedido #{number} entregue!*\n\n"
+        "Ol\u00e1, *{name}*! Esperamos que tenha gostado! \ud83d\udc9a\n"
+        "Foi um prazer atend\u00ea-lo(a). Obrigado por escolher o *{restaurant}*!\n\n"
+        "At\u00e9 o pr\u00f3ximo pedido! \ud83d\ude04"
+    ),
+    "cancelled": (
+        "\u274c *Pedido #{number} cancelado*\n\n"
+        "Ol\u00e1, *{name}*. Infelizmente seu pedido foi cancelado.\n\n"
+        "Entre em contato conosco para mais informa\u00e7\u00f5es. Pedimos desculpas pelo transtorno! \ud83d\ude4f"
+    ),
 }
 
 

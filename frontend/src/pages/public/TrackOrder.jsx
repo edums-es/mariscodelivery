@@ -118,7 +118,7 @@ export default function TrackOrder() {
                             ? "border-transparent text-white"
                             : active
                             ? "border-transparent text-white animate-pulse"
-                            : "border-gray-200 bg-white text-gray-300"
+                            : "border-gray-300 bg-gray-50 text-gray-400"
                         }`}
                         style={done || active ? { background: primary } : {}}
                       >
@@ -133,7 +133,7 @@ export default function TrackOrder() {
                     </div>
                     {/* Label */}
                     <div className="pb-6 pt-1.5">
-                      <p className={`text-sm font-semibold leading-none ${future ? "text-gray-300" : "text-gray-800"}`}>
+                      <p className={`text-sm font-semibold leading-none ${future ? "text-gray-500" : "text-gray-800"}`}>
                         {step.label}
                       </p>
                       {(done || active) && (

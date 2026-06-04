@@ -21,18 +21,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  ShoppingCart,
-  Plus,
-  Minus,
-  Trash2,
-  Printer,
-  Search,
-  TrendingUp,
-  DollarSign,
-  ShoppingBag,
-  X,
-  Star,
-  Bell,
+  ShoppingCart, Plus, Minus, Trash2, Printer, Search,
+  TrendingUp, TrendingDown, DollarSign, ShoppingBag, X,
+  Star, Bell, AlertTriangle, Wallet, Lock, Clock,
 } from "lucide-react";
 
 const PAYMENT_METHODS = [
@@ -63,6 +54,128 @@ function useNotificationSound() {
   return play;
 }
 
+// ── Modais de caixa ──────────────────────────────────────────────────────────
+
+function CaixaMovimentoModal({ type, onClose, onConfirm }) {
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [loading, setLoading] = useState(false);
+  const isSangria = type === "sangria";
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+      toast.error("Informe um valor válido"); return;
+    }
+    if (!reason.trim()) { toast.error("Informe o motivo"); return; }
+    setLoading(true);
+    try { await onConfirm(parseFloat(amount), reason.trim()); onClose(); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            {isSangria ? <TrendingDown className="text-red-500" size={20}/> : <TrendingUp className="text-green-500" size={20}/>}
+            {isSangria ? "Sangria de Caixa" : "Suprimento de Caixa"}
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X size={20}/></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Valor (R$)</label>
+            <input type="number" step="0.01" min="0.01" value={amount} onChange={(e) => setAmount(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+              placeholder="0,00" autoFocus/>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Motivo</label>
+            <input type="text" value={reason} onChange={(e) => setReason(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+              placeholder={isSangria ? "Ex: Pagamento de fornecedor" : "Ex: Troco inicial"}/>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose}
+              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+              Cancelar
+            </button>
+            <button type="submit" disabled={loading}
+              className={`flex-1 px-4 py-2 rounded-lg text-white font-medium disabled:opacity-50 ${isSangria ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}`}>
+              {loading ? "Salvando..." : "Confirmar"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CaixaFecharModal({ caixa, movimentos, onClose, onConfirm }) {
+  const [loading, setLoading] = useState(false);
+  const sangrias = movimentos.filter((m) => m.type === "sangria").reduce((s, m) => s + m.amount, 0);
+  const suprimentos = movimentos.filter((m) => m.type === "suprimento").reduce((s, m) => s + m.amount, 0);
+
+  const handleClose = async () => {
+    setLoading(true);
+    try { await onConfirm(); onClose(); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <AlertTriangle className="text-yellow-500" size={20}/> Fechar Caixa
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X size={20}/></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-sm text-gray-600 dark:text-gray-400">Resumo da sessão:</p>
+          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600 dark:text-gray-400">Valor inicial:</span>
+              <span className="font-medium text-gray-900 dark:text-white">{brl(caixa?.opening_amount || 0)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600 dark:text-gray-400">Vendas do período:</span>
+              <span className="font-medium text-green-600">{brl(caixa?.total_sales || 0)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600 dark:text-gray-400">Suprimentos:</span>
+              <span className="font-medium text-green-600">+ {brl(suprimentos)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600 dark:text-gray-400">Sangrias:</span>
+              <span className="font-medium text-red-600">- {brl(sangrias)}</span>
+            </div>
+            <div className="border-t border-gray-300 dark:border-gray-600 pt-2 flex justify-between font-semibold">
+              <span className="text-gray-900 dark:text-white">Total esperado:</span>
+              <span className="text-gray-900 dark:text-white">
+                {brl((caixa?.opening_amount || 0) + (caixa?.total_sales || 0) + suprimentos - sangrias)}
+              </span>
+            </div>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button onClick={onClose}
+              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+              Cancelar
+            </button>
+            <button onClick={handleClose} disabled={loading}
+              className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white font-medium disabled:opacity-50">
+              {loading ? "Fechando..." : "Fechar Caixa"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function PDV() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -81,6 +194,67 @@ export default function PDV() {
   const [restaurant, setRestaurant] = useState(null);
   const [lastPendingIds, setLastPendingIds] = useState(new Set());
   const playSound = useNotificationSound();
+
+  // ── Caixa integrado ──────────────────────────────────────────────
+  const [caixa, setCaixa] = useState(null);
+  const [caixaMovimentos, setCaixaMovimentos] = useState([]);
+  const [caixaLoading, setCaixaLoading] = useState(true);
+  const [openingAmount, setOpeningAmount] = useState("");
+  const [openingLoading, setOpeningLoading] = useState(false);
+  const [movimentoModal, setMovimentoModal] = useState(null); // "sangria" | "suprimento"
+  const [fecharModal, setFecharModal] = useState(false);
+
+  const fetchCaixa = useCallback(async () => {
+    try {
+      const res = await api.get("/admin/caixa/atual");
+      setCaixa(res.data);
+      if (res.data?.status === "open") {
+        const mv = await api.get("/admin/caixa/movimentos");
+        setCaixaMovimentos(mv.data || []);
+      }
+    } catch (err) {
+      if (err?.response?.status !== 404) toast.error("Erro ao carregar caixa");
+      setCaixa(null);
+    } finally {
+      setCaixaLoading(false);
+    }
+  }, []);
+
+  const handleAbrirCaixa = async (e) => {
+    e.preventDefault();
+    const val = parseFloat(openingAmount);
+    if (isNaN(val) || val < 0) return toast.error("Valor inicial inválido");
+    setOpeningLoading(true);
+    try {
+      await api.post("/admin/caixa/abrir", { opening_amount: val });
+      toast.success("Caixa aberto!");
+      setOpeningAmount("");
+      fetchCaixa();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Erro ao abrir caixa");
+    } finally {
+      setOpeningLoading(false);
+    }
+  };
+
+  const handleMovimento = async (amount, reason) => {
+    const endpoint = movimentoModal === "sangria" ? "/admin/caixa/sangria" : "/admin/caixa/suprimento";
+    await api.post(endpoint, { amount, reason });
+    toast.success(movimentoModal === "sangria" ? "Sangria registrada!" : "Suprimento registrado!");
+    fetchCaixa();
+  };
+
+  const handleFecharCaixa = async () => {
+    await api.post("/admin/caixa/fechar");
+    toast.success("Caixa fechado!");
+    setCaixa(null);
+    setCaixaMovimentos([]);
+    fetchCaixa();
+  };
+
+  const caixaSangrias = caixaMovimentos.filter(m => m.type === "sangria").reduce((s, m) => s + m.amount, 0);
+  const caixaSuprimentos = caixaMovimentos.filter(m => m.type === "suprimento").reduce((s, m) => s + m.amount, 0);
+  const caixaTotal = (caixa?.opening_amount || 0) + (caixa?.total_sales || 0) + caixaSuprimentos - caixaSangrias;
 
   const loadProducts = async () => {
     try {
@@ -119,6 +293,10 @@ export default function PDV() {
       setLastPendingIds(newIds);
     } catch {}
   }, [lastPendingIds, playSound]);
+
+  useEffect(() => {
+    fetchCaixa();
+  }, [fetchCaixa]);
 
   useEffect(() => {
     loadProducts();
@@ -285,8 +463,74 @@ export default function PDV() {
     win.document.close();
   };
 
+  // ── Guards de caixa ──────────────────────────────────────────────────────
+  if (caixaLoading) {
+    return (
+      <div className="flex items-center justify-center" style={{height:"calc(100vh - 108px)"}}>
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-orange-500"/>
+      </div>
+    );
+  }
+
+  if (!caixa || caixa.status !== "open") {
+    return (
+      <div className="flex items-center justify-center" style={{height:"calc(100vh - 108px)"}}>
+        <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg p-8 w-full max-w-sm border border-gray-200 dark:border-gray-700">
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-orange-100 dark:bg-orange-900/30 rounded-full mb-4">
+              <DollarSign className="text-orange-500" size={32}/>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Abrir Caixa</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Informe o valor inicial para começar a operar</p>
+          </div>
+          <form onSubmit={handleAbrirCaixa} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Valor inicial em caixa (R$)
+              </label>
+              <input
+                type="number" step="0.01" min="0"
+                value={openingAmount} onChange={(e) => setOpeningAmount(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500 text-lg"
+                placeholder="0,00" autoFocus
+              />
+            </div>
+            <button type="submit" disabled={openingLoading}
+              className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg disabled:opacity-50 transition-colors">
+              {openingLoading ? "Abrindo..." : "Abrir Caixa e Iniciar PDV"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   return (
     <div className="flex flex-col gap-3" style={{height:"calc(100vh - 108px)"}}>
+      {/* Caixa status bar */}
+      <div className="flex items-center gap-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 flex-shrink-0">
+        <Clock className="w-3.5 h-3.5 text-gray-400 flex-shrink-0"/>
+        <span className="text-xs text-gray-500 dark:text-gray-400 flex-1">
+          Caixa aberto desde{" "}
+          {new Date(caixa.opened_at).toLocaleTimeString("pt-BR", {hour:"2-digit", minute:"2-digit"})}
+          <span className="mx-2 text-gray-300 dark:text-gray-600">|</span>
+          <span className="font-semibold text-gray-700 dark:text-gray-200">Total: {brl(caixaTotal)}</span>
+        </span>
+        <button onClick={() => setMovimentoModal("suprimento")}
+          className="flex items-center gap-1 px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-medium transition-colors">
+          <TrendingUp className="w-3 h-3"/> Suprimento
+        </button>
+        <button onClick={() => setMovimentoModal("sangria")}
+          className="flex items-center gap-1 px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-medium transition-colors">
+          <TrendingDown className="w-3 h-3"/> Sangria
+        </button>
+        <button onClick={() => setFecharModal(true)}
+          className="flex items-center gap-1 px-2.5 py-1 bg-gray-700 hover:bg-gray-800 dark:bg-gray-600 dark:hover:bg-gray-500 text-white rounded text-xs font-medium transition-colors">
+          Fechar Caixa
+        </button>
+      </div>
+
       {/* Compact Summary + Title */}
       <div className="flex items-center justify-between">
         <h1 className="font-display font-bold text-xl dark:text-white flex items-center gap-2">
@@ -576,6 +820,23 @@ export default function PDV() {
           </div>
         </div>
       </div>
+
+            {/* Caixa Modals */}
+      {movimentoModal && (
+        <CaixaMovimentoModal
+          type={movimentoModal}
+          onClose={() => setMovimentoModal(null)}
+          onConfirm={handleMovimento}
+        />
+      )}
+      {fecharModal && (
+        <CaixaFecharModal
+          caixa={caixa}
+          movimentos={caixaMovimentos}
+          onClose={() => setFecharModal(false)}
+          onConfirm={handleFecharCaixa}
+        />
+      )}
 
       {/* Receipt Modal */}
       <Dialog open={receiptOpen} onOpenChange={setReceiptOpen}>

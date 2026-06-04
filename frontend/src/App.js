@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider, ForceLightMode } from "@/context/ThemeContext";
@@ -23,7 +23,6 @@ import Loyalty from "@/pages/admin/Loyalty";
 import Wholesale from "@/pages/admin/Wholesale";
 import Customers from "@/pages/admin/Customers";
 import PDV from "@/pages/admin/PDV";
-import CashRegister from "@/pages/admin/CashRegister";
 import Suppliers from "@/pages/admin/Suppliers";
 import Tables from "@/pages/admin/Tables";
 import SuperLayout from "@/components/super/SuperLayout";
@@ -63,7 +62,7 @@ function App() {
             <Route path="/supermaster" element={<Protected roles={["owner","manager","attendant","kitchen"]}><AdminLayout /></Protected>}>
               <Route index element={<Dashboard />} />
               <Route path="pdv" element={<PDV />} />
-              <Route path="caixa" element={<CashRegister />} />
+              <Route path="caixa" element={<Navigate to="/supermaster/pdv" replace />} />
               <Route path="pedidos" element={<Orders />} />
               <Route path="produtos" element={<Products />} />
               <Route path="categorias" element={<Categories />} />

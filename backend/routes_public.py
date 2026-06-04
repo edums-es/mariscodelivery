@@ -109,6 +109,18 @@ def _normalize_text(value: str) -> str:
     return value.strip().lower()
 
 
+def _zone_matches_neighborhood(zone_name: str, neighborhood_name: str) -> bool:
+    zone = _normalize_text(zone_name)
+    neighborhood = _normalize_text(neighborhood_name)
+    return bool(
+        zone and neighborhood and (
+            zone == neighborhood
+            or (len(zone) >= 4 and zone in neighborhood)
+            or (len(neighborhood) >= 4 and neighborhood in zone)
+        )
+    )
+
+
 async def _lookup_cep(cep: str) -> dict:
     import re
     import httpx as _httpx
@@ -145,7 +157,7 @@ async def _expected_delivery_fee(restaurant: dict, order: OrderIn):
     if active_zones:
         cep_data = await _lookup_cep(order.address.cep if order.address else "")
         cep_neighborhood = cep_data.get("bairro") or ""
-        zone = next((z for z in active_zones if _normalize_text(z.get("neighborhood")) == _normalize_text(cep_neighborhood)), None)
+        zone = next((z for z in active_zones if _zone_matches_neighborhood(z.get("neighborhood"), cep_neighborhood)), None)
         if not zone:
             raise HTTPException(status_code=400, detail="Ainda nao atendemos esse CEP")
         if order.address:

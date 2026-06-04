@@ -281,6 +281,9 @@ export default function Settings() {
                   <Plus className="w-3 h-3 mr-1" /> Bairro
                 </Button>
               </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                Cadastre o nome principal do bairro. O sistema compara com o bairro oficial do CEP e tambem aceita variacoes como "Parque Jacaraipe" para "Jacaraipe".
+              </p>
               <div className="space-y-2">
                 {(r.delivery_zones || []).map((z) => (
                   <div key={z.id} className="flex gap-2 items-center" data-testid={`zone-${z.id}`}>

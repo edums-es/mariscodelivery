@@ -23,6 +23,15 @@ const maskCep = (value) => {
 };
 const normalizeText = (value) =>
   (value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+const zoneMatchesNeighborhood = (zoneName, neighborhoodName) => {
+  const zone = normalizeText(zoneName);
+  const neighborhood = normalizeText(neighborhoodName);
+  return !!zone && !!neighborhood && (
+    zone === neighborhood ||
+    (zone.length >= 4 && neighborhood.includes(zone)) ||
+    (neighborhood.length >= 4 && zone.includes(neighborhood))
+  );
+};
 
 export default function CartSheet({ open, onOpenChange, restaurant, slug }) {
   const { items, updateQuantity, removeItem, subtotal, clearCart } = useCart();
@@ -57,14 +66,12 @@ export default function CartSheet({ open, onOpenChange, restaurant, slug }) {
   const zones = useMemo(() => restaurant?.delivery_zones || [], [restaurant?.delivery_zones]);
   const activeZones = useMemo(() => zones.filter((z) => z.active), [zones]);
   const selectedZone = useMemo(() => {
-    const current = normalizeText(neighborhood);
-    if (!current) return null;
-    return activeZones.find((z) => normalizeText(z.neighborhood) === current) || null;
+    if (!neighborhood) return null;
+    return activeZones.find((z) => zoneMatchesNeighborhood(z.neighborhood, neighborhood)) || null;
   }, [activeZones, neighborhood]);
   const cepZone = useMemo(() => {
-    const current = normalizeText(cepCheck?.neighborhood);
-    if (!current) return null;
-    return activeZones.find((z) => normalizeText(z.neighborhood) === current) || null;
+    if (!cepCheck?.neighborhood) return null;
+    return activeZones.find((z) => zoneMatchesNeighborhood(z.neighborhood, cepCheck.neighborhood)) || null;
   }, [activeZones, cepCheck]);
 
   const deliveryFee = useMemo(() => {
@@ -117,7 +124,7 @@ export default function CartSheet({ open, onOpenChange, restaurant, slug }) {
           toast.error("CEP nao encontrado");
           return;
         }
-        const zone = activeZones.find((z) => normalizeText(z.neighborhood) === normalizeText(data.bairro));
+        const zone = activeZones.find((z) => zoneMatchesNeighborhood(z.neighborhood, data.bairro));
         setCepCheck({ digits, neighborhood: data.bairro || "", allowed: activeZones.length === 0 || !!zone });
         if (data.logradouro) setStreet(data.logradouro);
         if (data.bairro) setNeighborhood(data.bairro);

@@ -180,7 +180,6 @@ export default function CartSheet({ open, onOpenChange, restaurant, slug }) {
         setPixPaid(false);
         setStep("pix");
         toast.success(`Pedido #${data.order_number} criado! Escaneie o QR Code.`);
-        clearCart();
         return;
       }
 
@@ -220,12 +219,19 @@ export default function CartSheet({ open, onOpenChange, restaurant, slug }) {
     setPixPaid(false);
     setLastOrderId(null);
     setLastOrderNumber(null);
+    clearCart();
     setStep("cart");
     onOpenChange(false);
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={(nextOpen) => {
+      if (!nextOpen && step === "pix") {
+        closePix();
+        return;
+      }
+      onOpenChange(nextOpen);
+    }}>
       <SheetContent side="bottom" className="max-w-md mx-auto rounded-t-2xl max-h-[92vh] overflow-y-auto p-0 dark" style={{background:"#111111",color:"#f0f0f0",borderColor:"rgba(255,255,255,0.1)"}}>
         <SheetHeader className="p-4 border-b sticky top-0 z-10" style={{background:"#111111",borderColor:"rgba(255,255,255,0.1)"}}>
           <SheetTitle className="font-display flex items-center gap-2">

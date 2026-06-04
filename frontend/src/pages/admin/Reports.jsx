@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import api from "@/lib/api";
 import { brl } from "@/lib/format";
 import { toast } from "sonner";
-import { TrendingUp, ShoppingBag, Users, AlertCircle } from "lucide-react";
+import { TrendingUp, ShoppingBag, AlertCircle } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -47,23 +47,38 @@ const chartTooltipStyle = {
   color: "#f9fafb",
 };
 
+const ordersOf = (data) => data?.orders || [];
+const activeOrdersOf = (data) => ordersOf(data).filter((o) => o.status !== "cancelled");
+const orderTotal = (order) => Number(order?.total || 0);
+const itemTotal = (item) => {
+  if (item?.total_price != null) return Number(item.total_price) || 0;
+  if (item?.price != null) return (Number(item.price) || 0) * (Number(item.quantity) || 1);
+  return (Number(item?.unit_price) || 0) * (Number(item?.quantity) || 1);
+};
+const customerPhone = (order) => (order.customer?.phone || order.customer_phone || "").replace(/\D/g, "");
+
 function OverviewTab({ data, period, setPeriod }) {
   if (!data) return null;
 
-  const totalOrders = data.orders?.length || 0;
-  const totalRevenue = (data.orders || []).filter((o) => o.status !== "cancelled").reduce((s, o) => s + (o.total || 0), 0);
-  const avgTicket = totalOrders > 0 ? totalRevenue / Math.max(1, (data.orders || []).filter((o) => o.status !== "cancelled").length) : 0;
-  const cancelled = (data.orders || []).filter((o) => o.status === "cancelled").length;
+  const orders = ordersOf(data);
+  const activeOrders = activeOrdersOf(data);
+  const totalOrders = orders.length;
+  const validOrders = activeOrders.length;
+  const totalRevenue = activeOrders.reduce((s, o) => s + orderTotal(o), 0);
+  const avgTicket = validOrders > 0 ? totalRevenue / validOrders : 0;
+  const cancelled = orders.filter((o) => o.status === "cancelled").length;
   const cancelRate = totalOrders > 0 ? ((cancelled / totalOrders) * 100).toFixed(1) : 0;
 
   // Agrupar por dia
   const dayMap = {};
-  (data.orders || []).forEach((o) => {
+  orders.forEach((o) => {
     const d = (o.created_at || "").slice(0, 10);
     if (!d) return;
     if (!dayMap[d]) dayMap[d] = { date: d, revenue: 0, orders: 0 };
-    if (o.status !== "cancelled") dayMap[d].revenue += o.total || 0;
-    dayMap[d].orders += 1;
+    if (o.status !== "cancelled") {
+      dayMap[d].revenue += orderTotal(o);
+      dayMap[d].orders += 1;
+    }
   });
   const dailyData = Object.values(dayMap).sort((a, b) => a.date.localeCompare(b.date)).map((r) => ({
     ...r,
@@ -89,8 +104,8 @@ function OverviewTab({ data, period, setPeriod }) {
         ))}
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={ShoppingBag} label="Total de pedidos" value={totalOrders} color="gold" />
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-4">
+        <StatCard icon={ShoppingBag} label="Pedidos validos" value={validOrders} sub={`${totalOrders} no total`} color="gold" />
         <StatCard icon={TrendingUp} label="Receita total" value={brl(totalRevenue)} color="green" />
         <StatCard icon={TrendingUp} label="Ticket médio" value={brl(avgTicket)} color="amber" />
         <StatCard icon={AlertCircle} label="Taxa de cancelamento" value={`${cancelRate}%`} sub={`${cancelled} pedidos`} color="red" />
@@ -139,7 +154,7 @@ function ProductsTab({ data }) {
       const name = item.product_name || item.name || "Desconhecido";
       if (!productMap[name]) productMap[name] = { name, quantity: 0, revenue: 0 };
       productMap[name].quantity += item.quantity || 1;
-      productMap[name].revenue += (item.price || 0) * (item.quantity || 1);
+      productMap[name].revenue += itemTotal(item);
     });
   });
 
@@ -191,12 +206,12 @@ function CustomersTab({ data }) {
   const customerMap = {};
   (data.orders || []).forEach((o) => {
     if (o.status === "cancelled") return;
-    const cid = o.customer_id || o.customer?.id;
+    const cid = customerPhone(o);
     const name = o.customer_name || o.customer?.name || "Anônimo";
     if (!cid) return;
     if (!customerMap[cid]) customerMap[cid] = { id: cid, name, orders: 0, revenue: 0, firstOrder: o.created_at };
     customerMap[cid].orders += 1;
-    customerMap[cid].revenue += o.total || 0;
+    customerMap[cid].revenue += orderTotal(o);
     if (o.created_at < customerMap[cid].firstOrder) customerMap[cid].firstOrder = o.created_at;
   });
 
@@ -289,13 +304,20 @@ function CustomersTab({ data }) {
 function FinancialTab({ data }) {
   if (!data) return null;
 
+  const orders = ordersOf(data);
+  const activeOrders = activeOrdersOf(data);
+  const grossRevenue = activeOrders.reduce((sum, o) => sum + orderTotal(o), 0);
+  const deliveryFees = activeOrders.reduce((sum, o) => sum + Number(o.delivery_fee || 0), 0);
+  const discounts = activeOrders.reduce((sum, o) => sum + Number(o.discount || 0), 0);
+  const cancelledRevenue = orders.filter((o) => o.status === "cancelled").reduce((sum, o) => sum + orderTotal(o), 0);
+
   // Por forma de pagamento
   const paymentMap = {};
   (data.orders || []).forEach((o) => {
     if (o.status === "cancelled") return;
     const method = o.payment_method || "Outros";
     if (!paymentMap[method]) paymentMap[method] = { name: method, value: 0 };
-    paymentMap[method].value += o.total || 0;
+    paymentMap[method].value += orderTotal(o);
   });
   const paymentData = Object.values(paymentMap);
 
@@ -303,8 +325,8 @@ function FinancialTab({ data }) {
   const deliveryMap = { delivery: 0, pickup: 0 };
   (data.orders || []).forEach((o) => {
     if (o.status === "cancelled") return;
-    if (o.order_type === "pickup" || o.type === "pickup") deliveryMap.pickup += o.total || 0;
-    else deliveryMap.delivery += o.total || 0;
+    if (o.order_type === "pickup" || o.type === "pickup") deliveryMap.pickup += orderTotal(o);
+    else deliveryMap.delivery += orderTotal(o);
   });
   const deliveryData = [
     { name: "Delivery", value: deliveryMap.delivery },
@@ -320,8 +342,8 @@ function FinancialTab({ data }) {
   (data.orders || []).forEach((o) => {
     if (o.status === "cancelled") return;
     const month = (o.created_at || "").slice(0, 7);
-    if (month === curMonth) curRevenue += o.total || 0;
-    else if (month === prevMonth) prevRevenue += o.total || 0;
+    if (month === curMonth) curRevenue += orderTotal(o);
+    else if (month === prevMonth) prevRevenue += orderTotal(o);
   });
   const compareData = [
     { name: "Mês anterior", value: prevRevenue },
@@ -340,6 +362,13 @@ function FinancialTab({ data }) {
 
   return (
     <div className="space-y-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard icon={TrendingUp} label="Receita confirmada" value={brl(grossRevenue)} color="green" />
+        <StatCard icon={ShoppingBag} label="Taxas de entrega" value={brl(deliveryFees)} color="gold" />
+        <StatCard icon={TrendingUp} label="Descontos dados" value={brl(discounts)} color="amber" />
+        <StatCard icon={AlertCircle} label="Valor cancelado" value={brl(cancelledRevenue)} color="red" />
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
           <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Receita por forma de pagamento</h3>

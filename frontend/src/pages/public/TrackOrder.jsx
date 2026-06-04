@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
 import { API } from "@/lib/api";
@@ -30,7 +30,7 @@ export default function TrackOrder() {
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const { data } = await axios.get(`${API}/public/orders/${order_id}`);
       setOrder(data);
@@ -39,13 +39,13 @@ export default function TrackOrder() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [order_id]);
 
   useEffect(() => {
     load();
     const t = setInterval(load, 30000);
     return () => clearInterval(t);
-  }, [order_id]);
+  }, [load]);
 
   if (loading) return (
     <div className="min-h-screen grid place-items-center bg-[#0B0B0B]">

@@ -20,7 +20,7 @@ export default function ProductDrawer({ product, open, onOpenChange, onAdd }) {
     }
   }, [open, product]);
 
-  const groups = product?.option_groups || [];
+  const groups = useMemo(() => product?.option_groups || [], [product]);
   const basePrice = product
     ? product.promotional_price != null && product.promotional_price > 0
       ? product.promotional_price
